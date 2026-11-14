@@ -31,7 +31,7 @@ again.
 
 A user can also add addresses by hand in the settings (`/-/api/emails`),
 kept in lower case, at most 20. At first nothing checked those; since
-decision 30 they count only once a link sent by mail verified them.
+decision 32 they count only once a link sent by mail verified them.
 
 **Activity here.** After each change on a server, it reads the commits
 of the repository's default branch with `git rev-list` since the commit it

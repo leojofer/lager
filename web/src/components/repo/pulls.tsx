@@ -1,26 +1,56 @@
 import { Link } from "@tanstack/react-router"
-import {
-  GitMerge,
-  GitPullRequest,
-  GitPullRequestClosed,
-  Plus,
-} from "lucide-react"
 
 import { usePulls, type Pull, type PullState, type Refs } from "@/lib/api"
-import { ago } from "@/lib/format"
+import { fullDate, since } from "@/lib/format"
 import { href } from "@/lib/paths"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
+import { EmptyRow, rowList } from "@/components/frame"
+import { Avatar } from "./avatar"
 
-const stateStyle: Record<PullState, { icon: typeof GitMerge; color: string }> =
-  {
-    open: { icon: GitPullRequest, color: "text-emerald-600" },
-    merged: { icon: GitMerge, color: "text-violet-600" },
-    closed: { icon: GitPullRequestClosed, color: "text-red-600" },
-  }
+/**
+ * How far along a pull request is, on a track of four bars: proposed,
+ * pushed, being checked, merged. Done bars are ink, the current one blue.
+ */
+const stageOf: Record<PullState, number> = { open: 2, merged: 4, closed: -1 }
 
+export const stateLabel: Record<PullState, string> = {
+  open: "Open",
+  merged: "Merged",
+  closed: "Closed",
+}
+
+export function StageTrack({
+  state,
+  className,
+}: {
+  state: PullState
+  className?: string
+}) {
+  const stage = stageOf[state]
+  return (
+    <span
+      className={cn("flex shrink-0 items-center gap-0.5", className)}
+      title={stateLabel[state]}
+      role="img"
+      aria-label={stateLabel[state]}
+    >
+      {[0, 1, 2, 3].map((i) => (
+        <span
+          key={i}
+          className={cn(
+            "h-3 w-1.5 rounded-[2px]",
+            i < stage ? "bg-body" : i === stage ? "bg-primary" : "bg-stage-off"
+          )}
+        />
+      ))}
+    </span>
+  )
+}
+
+/** The state mark of a pull request in lists and search. */
 export function PullIcon({
   state,
   className,
@@ -28,31 +58,28 @@ export function PullIcon({
   state: PullState
   className?: string
 }) {
-  const { icon: Icon, color } = stateStyle[state]
-  return <Icon className={cn("size-4 shrink-0", color, className)} />
+  return <StageTrack state={state} className={className} />
 }
 
+/** The state as a chip: the track and its name, tinted while open. */
 export function PullStateBadge({ state }: { state: PullState }) {
-  const { icon: Icon } = stateStyle[state]
   return (
     <span
       className={cn(
-        "inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-sm font-medium text-white capitalize",
-        state === "open" && "bg-emerald-600",
-        state === "merged" && "bg-violet-600",
-        state === "closed" && "bg-red-600"
+        "inline-flex h-6 items-center gap-2 rounded-[5px] px-2 text-xs font-medium",
+        state === "open" ? "bg-tint text-tint-foreground" : "bg-muted text-body"
       )}
     >
-      <Icon className="size-4" />
-      {state}
+      <StageTrack state={state} />
+      {stateLabel[state]}
     </span>
   )
 }
 
-/** A branch name in a pill. */
+/** A branch name in mono. */
 export function BranchName({ name }: { name: string }) {
   return (
-    <span className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-xs">
+    <span className="rounded-[4px] bg-muted px-1.5 py-0.5 font-mono text-[11px] text-body">
       {name}
     </span>
   )
@@ -80,9 +107,13 @@ export function PullList({
   const counts = q.data?.pages[0]?.counts
 
   return (
-    <div className="grid grid-cols-1 gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <div className="flex gap-1">
+    <div className="grid grid-cols-1 gap-6">
+      <div className="flex flex-wrap items-baseline gap-x-3 gap-y-2">
+        <h1 className="font-display text-[34px] leading-9 text-ink">
+          Pull requests
+        </h1>
+        {/* Open and closed are two lists of one page, not tabs. */}
+        <div className="flex items-baseline gap-3 text-sm">
           {([false, true] as const).map((c) => (
             <Link
               key={String(c)}
@@ -91,53 +122,50 @@ export function PullList({
                 _splat: c ? href(repo, "pulls", "closed") : href(repo, "pulls"),
               }}
               className={cn(
-                "flex items-center gap-1.5 rounded-md px-2.5 py-1 text-sm",
                 c === closed
-                  ? "bg-muted font-medium"
-                  : "text-muted-foreground hover:text-foreground"
+                  ? "font-medium text-ink"
+                  : "text-muted-foreground hover:text-ink"
               )}
             >
-              {c ? (
-                <GitPullRequestClosed className="size-4" />
-              ) : (
-                <GitPullRequest className="size-4" />
-              )}
               {counts && (c ? counts.closed : counts.open)}{" "}
-              {c ? "Closed" : "Open"}
+              {c ? "closed" : "open"}
             </Link>
           ))}
         </div>
-        {refs.branches.length > 1 && (
-          <Button asChild size="sm" className="ml-auto">
-            <Link to="/$" params={{ _splat: newPullHref(repo, refs) }}>
-              <Plus />
-              New pull request
-            </Link>
-          </Button>
+      </div>
+      <div>
+        <div className="flex items-center gap-2 pb-2">
+          <h2 className="label-caps">{closed ? "Closed" : "Open"}</h2>
+          {counts && (
+            <span className="font-mono text-[11px] font-medium text-label">
+              {closed ? counts.closed : counts.open}
+            </span>
+          )}
+        </div>
+        {q.error ? (
+          <QueryError error={q.error} />
+        ) : !pulls ? (
+          <Skeleton className="h-48" />
+        ) : pulls.length === 0 ? (
+          <EmptyRow>
+            {closed
+              ? "No closed pull requests."
+              : refs.mirror
+                ? `No open pull requests on github.com/${refs.mirror}.`
+                : "No open pull requests. Push a branch and open one to propose its changes."}
+          </EmptyRow>
+        ) : (
+          <ul className={rowList}>
+            {pulls.map((p) => (
+              <PullRow key={p.number} repo={repo} pull={p} />
+            ))}
+          </ul>
         )}
       </div>
-      {q.error ? (
-        <QueryError error={q.error} />
-      ) : !pulls ? (
-        <Skeleton className="h-48" />
-      ) : pulls.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
-          {closed
-            ? "No closed pull requests."
-            : refs.mirror
-              ? `No open pull requests on github.com/${refs.mirror}.`
-              : "No open pull requests. Push a branch and open one to propose its changes."}
-        </p>
-      ) : (
-        <ul className="divide-y rounded-lg border">
-          {pulls.map((p) => (
-            <PullRow key={p.number} repo={repo} pull={p} />
-          ))}
-        </ul>
-      )}
       {q.hasNextPage && (
         <Button
           variant="outline"
+          size="sm"
           className="justify-self-center"
           disabled={q.isFetchingNextPage}
           onClick={() => q.fetchNextPage()}
@@ -149,43 +177,37 @@ export function PullList({
   )
 }
 
-/** One pull request in a list: state, title, number, age, and branches. */
+/**
+ * One pull request in a list: state, number, title, source branch,
+ * author, and age, in fixed slots so columns align across rows.
+ */
 export function PullRow({ repo, pull: p }: { repo: string; pull: Pull }) {
+  const time = p.state === "open" ? p.created_ms : (p.closed_ms ?? p.updated_ms)
   return (
-    <li className="flex items-start gap-3 px-4 py-3">
-      <PullIcon state={p.state} className="mt-0.5" />
-      <div className="min-w-0 flex-1">
-        <Link
-          to="/$"
-          params={{ _splat: href(repo, "pull", String(p.number)) }}
-          className="font-medium break-words hover:underline"
-        >
+    <li>
+      <Link
+        to="/$"
+        params={{ _splat: href(repo, "pull", String(p.number)) }}
+        className="flex h-11 items-center gap-3.5 px-1 hover:bg-muted/50"
+      >
+        <StageTrack state={p.state} className="w-7.5" />
+        <span className="w-10 shrink-0 font-mono text-[11px] font-medium text-[#55555D] dark:text-muted-foreground">
+          #{p.number}
+        </span>
+        <span className="min-w-0 truncate text-[13px] font-medium text-ink">
           {p.title}
-        </Link>
-        <p className="mt-0.5 text-xs text-muted-foreground">
-          #{p.number}{" "}
-          {p.state === "merged"
-            ? `merged ${ago((p.closed_ms ?? p.updated_ms) / 1000)}`
-            : p.state === "closed"
-              ? `closed ${ago((p.closed_ms ?? p.updated_ms) / 1000)}`
-              : `opened ${ago(p.created_ms / 1000)}`}{" "}
-          by{" "}
-          {p.github_url ? (
-            p.author
-          ) : (
-            <Link
-              to="/$"
-              params={{ _splat: p.author }}
-              className="hover:text-foreground hover:underline"
-            >
-              {p.author}
-            </Link>
-          )}
-        </p>
-      </div>
-      <span className="hidden shrink-0 items-center gap-1 text-xs text-muted-foreground sm:flex">
-        <BranchName name={p.source} />→<BranchName name={p.target} />
-      </span>
+        </span>
+        <span className="ml-auto hidden max-w-48 shrink-0 truncate font-mono text-[11px] text-label md:inline">
+          {p.source}
+        </span>
+        <Avatar name={p.author} className="size-5 text-[9px] max-md:ml-auto" />
+        <span
+          className="w-7 shrink-0 text-right text-xs text-label"
+          title={`${p.state === "open" ? "Opened" : stateLabel[p.state]} ${fullDate(time / 1000)} by ${p.author}`}
+        >
+          {since(time / 1000)}
+        </span>
+      </Link>
     </li>
   )
 }

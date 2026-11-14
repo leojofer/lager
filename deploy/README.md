@@ -66,7 +66,7 @@ change it later, change it in the database first
 
 Verification mails for the email addresses users add need an SMTP
 service (Resend, Postmark, Amazon SES, Fastmail, …); see
-[decision 30](../docs/decisions/0030-email-verification.md). Without it,
+[decision 32](../docs/decisions/0032-email-verification.md). Without it,
 users get only the addresses their GitHub account verified.
 
 1. At the provider, add the sending domain and create SMTP credentials.

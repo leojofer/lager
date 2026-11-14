@@ -1,12 +1,12 @@
 import { Link } from "@tanstack/react-router"
-import { BookLock, BookOpen } from "lucide-react"
 import { useMemo } from "react"
 
 import { useProfile, useRepos } from "@/lib/api"
 import type { ActivityDay } from "@/lib/api"
 import { href } from "@/lib/paths"
 import { cn } from "@/lib/utils"
-import { Avatar } from "@/components/repo/avatar"
+import { Avatar, RepoDot } from "@/components/repo/avatar"
+import { Crumbs, PageBody, PageHeader, rowList } from "@/components/frame"
 import { Badge } from "@/components/ui/badge"
 import { Skeleton } from "@/components/ui/skeleton"
 import {
@@ -23,10 +23,10 @@ const WEEKS = 53
 /** Cell colours from none to most, on the accent. */
 const LEVELS = [
   "bg-muted",
-  "bg-blue-600/25",
-  "bg-blue-600/45",
-  "bg-blue-600/70",
-  "bg-blue-600",
+  "bg-primary/25",
+  "bg-primary/45",
+  "bg-primary/70",
+  "bg-primary",
 ]
 const dayName = new Intl.DateTimeFormat(undefined, {
   weekday: "short",
@@ -53,90 +53,96 @@ export function ProfilePage({ user }: { user: string }) {
     return <NotFound />
 
   return (
-    <div className="grid w-full grid-cols-1 gap-8">
-      <div className="flex items-center gap-4">
-        <Avatar name={user} className="size-14 text-lg" />
-        <h1 className="text-2xl font-semibold tracking-tight">{user}</h1>
-      </div>
-
-      <section className="grid gap-3">
-        <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
-          <h2 className="font-mono text-xs font-medium tracking-wider uppercase">
-            Activity
-          </h2>
-          {profile.data && (
-            <span className="font-mono text-xs text-muted-foreground">
-              {(
-                profile.data.totals.lager + profile.data.totals.github
-              ).toLocaleString()}{" "}
-              in the last year
-            </span>
-          )}
-          {profile.data?.github && (
-            <span className="ml-auto flex items-center gap-3 font-mono text-xs text-muted-foreground">
-              <span>lager {profile.data.totals.lager.toLocaleString()}</span>
-              <span className="flex items-center gap-1">
-                <GithubMark />
-                {profile.data.totals.github.toLocaleString()}
-              </span>
-            </span>
-          )}
+    <>
+      <PageHeader>
+        <Crumbs items={[{ label: user }]} />
+      </PageHeader>
+      <PageBody className="grid grid-cols-1 gap-8">
+        <div className="flex items-center gap-4.5">
+          <Avatar name={user} className="size-14 text-lg" />
+          <h1 className="font-display text-[34px] leading-9 text-ink">
+            {user}
+          </h1>
         </div>
-        {profile.error ? (
-          <QueryError error={profile.error} />
-        ) : !profile.data ? (
-          <Skeleton className="h-32" />
-        ) : (
-          <Graph days={profile.data.days} />
-        )}
-      </section>
 
-      <section className="grid gap-3">
-        <h2 className="font-mono text-xs font-medium tracking-wider uppercase">
-          Repositories{" "}
-          {own && (
-            <span className="font-normal text-muted-foreground">
-              {own.length}
-            </span>
+        <section className="grid gap-3">
+          <div className="flex flex-wrap items-baseline gap-x-4 gap-y-1">
+            <h2 className="label-caps">Activity</h2>
+            {profile.data && (
+              <span className="font-mono text-xs text-muted-foreground">
+                {(
+                  profile.data.totals.lager + profile.data.totals.github
+                ).toLocaleString()}{" "}
+                in the last year
+              </span>
+            )}
+            {profile.data?.github && (
+              <span className="ml-auto flex items-center gap-3 font-mono text-xs text-muted-foreground">
+                <span>lager {profile.data.totals.lager.toLocaleString()}</span>
+                <span className="flex items-center gap-1">
+                  <GithubMark />
+                  {profile.data.totals.github.toLocaleString()}
+                </span>
+              </span>
+            )}
+          </div>
+          {profile.error ? (
+            <QueryError error={profile.error} />
+          ) : !profile.data ? (
+            <Skeleton className="h-32" />
+          ) : (
+            <Graph days={profile.data.days} />
           )}
-        </h2>
-        {!own ? (
-          <Skeleton className="h-14" />
-        ) : own.length === 0 ? (
-          <p className="text-sm text-muted-foreground">None to show.</p>
-        ) : (
-          <ul className="divide-y rounded-lg border">
-            {own.map((r) => (
-              <li key={r.name}>
-                <Link
-                  to="/$"
-                  params={{ _splat: href(r.name) }}
-                  className="flex items-center gap-3 px-4 py-2.5 text-sm hover:bg-muted/50"
-                >
-                  {r.anonymous_read ? (
-                    <BookOpen className="size-4 shrink-0 text-muted-foreground" />
-                  ) : (
-                    <BookLock className="size-4 shrink-0 text-muted-foreground" />
-                  )}
-                  <span className="truncate font-medium">
-                    {r.name.slice(user.length + 1)}
-                  </span>
-                  {r.mirror && (
-                    <Badge
-                      variant="outline"
-                      title={`Mirror of github.com/${r.mirror}`}
-                    >
-                      <GithubMark />
-                      mirror
+        </section>
+
+        <section className="grid gap-3">
+          <div className="flex items-center gap-2">
+            <h2 className="label-caps">Repositories</h2>
+            {own && (
+              <span className="font-mono text-[11px] font-medium text-label">
+                {own.length}
+              </span>
+            )}
+          </div>
+          {!own ? (
+            <Skeleton className="h-14" />
+          ) : own.length === 0 ? (
+            <p className="text-sm text-muted-foreground">None to show.</p>
+          ) : (
+            <ul className={rowList}>
+              {own.map((r) => (
+                <li key={r.name}>
+                  <Link
+                    to="/$"
+                    params={{ _splat: href(r.name) }}
+                    className="flex h-11 items-center gap-3.5 px-1 text-[13px] hover:bg-muted/50"
+                  >
+                    <span className="flex w-4 shrink-0 justify-center">
+                      <RepoDot name={r.name} />
+                    </span>
+                    <span className="truncate font-medium text-ink">
+                      {r.name.slice(user.length + 1)}
+                    </span>
+                    <Badge variant="outline">
+                      {r.anonymous_read ? "Public" : "Private"}
                     </Badge>
-                  )}
-                </Link>
-              </li>
-            ))}
-          </ul>
-        )}
-      </section>
-    </div>
+                    {r.mirror && (
+                      <Badge
+                        variant="outline"
+                        title={`Mirror of github.com/${r.mirror}`}
+                      >
+                        <GithubMark />
+                        mirror
+                      </Badge>
+                    )}
+                  </Link>
+                </li>
+              ))}
+            </ul>
+          )}
+        </section>
+      </PageBody>
+    </>
   )
 }
 

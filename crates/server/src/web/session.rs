@@ -87,6 +87,46 @@ impl Sessions {
         )
     }
 
+    /// `value` signed for `purpose` until `secs` from now, for cookies other
+    /// than the session that the browser must not change.
+    pub fn seal(&self, purpose: &str, value: &str, secs: u64) -> String {
+        let expires = now_secs() + secs;
+        format!(
+            "{}.{expires}.{}",
+            B64.encode(value),
+            B64.encode(self.seal_mac(purpose, value, expires))
+        )
+    }
+
+    /// The value of [`Self::seal`] if its signature and time hold.
+    pub fn open(&self, purpose: &str, sealed: &str) -> Option<String> {
+        let mut parts = sealed.split('.');
+        let (Some(value), Some(expires), Some(mac), None) =
+            (parts.next(), parts.next(), parts.next(), parts.next())
+        else {
+            return None;
+        };
+        let value = String::from_utf8(B64.decode(value).ok()?).ok()?;
+        let expires = expires.parse::<u64>().ok()?;
+        let mac = B64.decode(mac).ok()?;
+        (expires > now_secs() && constant_time_eq(&self.seal_mac(purpose, &value, expires), &mac))
+            .then_some(value)
+    }
+
+    fn seal_mac(&self, purpose: &str, value: &str, expires: u64) -> [u8; 32] {
+        hmac_sha256(
+            &self.secret,
+            &[
+                b"lager-seal-v1\0",
+                purpose.as_bytes(),
+                b"\0",
+                value.as_bytes(),
+                b"\0",
+                expires.to_string().as_bytes(),
+            ],
+        )
+    }
+
     /// The signed-in user for a cookie value. `Ok(None)`: no valid session.
     pub async fn resolve(
         &self,

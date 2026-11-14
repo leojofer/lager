@@ -10,7 +10,6 @@ import { href } from "@/lib/paths"
 import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
-import { CommitLine } from "./commit-line"
 import { CopyButton } from "./clone"
 import { codeOptions, codeStyle } from "./diff"
 import { isMarkdown, MarkdownView } from "./markdown"
@@ -39,14 +38,15 @@ export function BlobView({
     )
   }
   return (
-    <div className="grid grid-cols-1 gap-4">
+    <div>
       {blob.error ? (
-        <QueryError error={blob.error} />
+        <div className="p-4 md:p-6">
+          <QueryError error={blob.error} />
+        </div>
       ) : !blob.data ? (
-        <Skeleton className="h-96" />
+        <Skeleton className="m-4 h-96 md:m-6" />
       ) : (
-        <div className="overflow-hidden rounded-lg border">
-          <CommitLine repo={repo} commit={blob.data.last_commit} />
+        <div>
           {blob.data.text !== null && markdown && !source ? (
             <>
               <FileInfo
@@ -104,9 +104,9 @@ function FileInfo({
   onSource?: (source: boolean) => void
 }) {
   return (
-    <div className="flex items-center gap-3 border-b px-4 py-2 text-xs text-muted-foreground">
+    <div className="flex h-10 items-center gap-3 border-b border-hairline px-4 font-mono text-[11px] text-label md:px-6">
       {source !== undefined && onSource && (
-        <span className="flex gap-1">
+        <span className="flex gap-1 font-sans">
           <Button
             variant={source ? "ghost" : "secondary"}
             size="xs"

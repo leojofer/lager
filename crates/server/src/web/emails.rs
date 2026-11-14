@@ -2,7 +2,7 @@
 //! author email count on the user's profile and link to it, once verified
 //! (docs/decisions/0029-activity-graph.md). A connected GitHub account
 //! adds the addresses it verified; one added here gets a mail with a link
-//! that verifies it (docs/decisions/0030-email-verification.md).
+//! that verifies it (docs/decisions/0032-email-verification.md).
 use super::json_error;
 use super::tokens::signed_in;
 use crate::http::AppState;

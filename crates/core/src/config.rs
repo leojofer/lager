@@ -123,7 +123,7 @@ pub struct SshConfig {
 }
 
 /// A mail server for verifying email addresses
-/// (docs/decisions/0030-email-verification.md). Without it, only GitHub
+/// (docs/decisions/0032-email-verification.md). Without it, only GitHub
 /// verifies addresses.
 #[derive(Clone, Debug)]
 pub struct MailConfig {

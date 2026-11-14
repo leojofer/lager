@@ -4,6 +4,7 @@ Status: accepted; implemented in `web/src/components/repo/overview.tsx`,
 `web/src/components/repo/code.tsx`, `web/src/components/app-sidebar.tsx`,
 and `web/src/components/omnibar.tsx`.
 Date: October 15, 2026.
+The tabs and the frame are replaced by [decision 30](0030-interface-redesign.md).
 
 ## Context
 

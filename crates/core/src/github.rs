@@ -227,8 +227,69 @@ impl GithubDb {
         Ok(())
     }
 
+    // Sign-in with GitHub (docs/decisions/0031-github-sign-in.md).
+
+    /// The user that the GitHub account `github_id` signs in, if any; keeps
+    /// its current `login`.
+    pub async fn signs_in(
+        &self,
+        github_id: i64,
+        login: &str,
+    ) -> Result<Option<String>, GithubDbError> {
+        sqlx::query_scalar(
+            "UPDATE lager_github_logins SET login = $2 WHERE github_id = $1 RETURNING user_name",
+        )
+        .bind(github_id)
+        .bind(login)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(unavailable)
+    }
+
+    /// Lets the GitHub account sign the user in, unless either is linked
+    /// already. Answers whether the user is linked to this account now.
+    pub async fn link(
+        &self,
+        user: &str,
+        github_id: i64,
+        login: &str,
+    ) -> Result<bool, GithubDbError> {
+        sqlx::query(
+            "INSERT INTO lager_github_logins (github_id, user_name, login)
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        )
+        .bind(github_id)
+        .bind(user)
+        .bind(login)
+        .execute(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        Ok(self
+            .linked(user)
+            .await?
+            .is_some_and(|(id, _)| id == github_id))
+    }
+
+    /// Whether a connected account holds `token`.
+    pub async fn token_in_use(&self, token: &str) -> Result<bool, GithubDbError> {
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM lager_github_accounts WHERE token = $1)")
+            .bind(token)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unavailable)
+    }
+
+    /// The GitHub ID and login of the account that signs the user in.
+    pub async fn linked(&self, user: &str) -> Result<Option<(i64, String)>, GithubDbError> {
+        sqlx::query_as("SELECT github_id, login FROM lager_github_logins WHERE user_name = $1")
+            .bind(user)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unavailable)
+    }
+
     /// Forgets the account and the email addresses it verified. Its
-    /// mirrors stay and stop syncing.
+    /// mirrors stay and stop syncing. Sign-in with it stays.
     pub async fn disconnect(&self, user: &str) -> Result<(), GithubDbError> {
         sqlx::query("DELETE FROM lager_github_accounts WHERE user_name = $1")
             .bind(user)
@@ -247,7 +308,7 @@ impl GithubDb {
     /// case (docs/decisions/0029-activity-graph.md). An unverified address
     /// the user added by hand becomes GitHub's; one GitHub no longer lists
     /// goes. An address that another user verified stays theirs
-    /// (docs/decisions/0030-email-verification.md).
+    /// (docs/decisions/0032-email-verification.md).
     pub async fn set_emails(&self, user: &str, emails: &[String]) -> Result<(), GithubDbError> {
         let mut tx = self.pool.begin().await.map_err(unavailable)?;
         sqlx::query(

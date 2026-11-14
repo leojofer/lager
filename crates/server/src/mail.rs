@@ -1,5 +1,5 @@
 //! Mail that verifies email addresses
-//! (docs/decisions/0030-email-verification.md). The link in it works only
+//! (docs/decisions/0032-email-verification.md). The link in it works only
 //! for the user who added the address, so a stranger who follows it
 //! verifies nothing for anyone else.
 

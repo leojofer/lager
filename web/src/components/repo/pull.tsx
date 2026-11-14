@@ -1,18 +1,17 @@
 import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
+  Check,
   CheckCircle2,
   ChevronDown,
   ExternalLink,
-  FileDiff,
   GitCommitHorizontal,
   GitMerge,
   GitPullRequestClosed,
-  MessageSquare,
   RotateCcw,
   Upload,
 } from "lucide-react"
-import { useState, type ReactNode } from "react"
+import { useEffect, useMemo, useState, type ReactNode } from "react"
 
 import {
   requestId,
@@ -20,11 +19,12 @@ import {
   useLive,
   usePull,
   usePullChange,
+  type Commit,
   type Pull,
   type PullDetail,
   type PullEvent,
 } from "@/lib/api"
-import { ago, fullDate, short } from "@/lib/format"
+import { ago, fullDate, short, since } from "@/lib/format"
 import { href } from "@/lib/paths"
 import { cn } from "@/lib/utils"
 import { Alert, AlertDescription } from "@/components/ui/alert"
@@ -40,170 +40,369 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
 import { Avatar } from "./avatar"
 import { ChangedFiles } from "./changes"
-import { CommitRows } from "./compare"
+import { parseDiff } from "./diff"
 import { MessageView } from "./markdown"
 import { MessageEditor } from "./message-editor"
-import { BranchName, PullStateBadge } from "./pulls"
+import { PullStateBadge } from "./pulls"
+import { DiffStat, PageBody, SectionHead } from "@/components/frame"
 
-type Tab = "conversation" | "commits" | "files"
-
+/**
+ * A pull request: its commits as a stack from the head down to the target
+ * branch, the conversation and the changed files one below the other, and
+ * the state and properties beside them. `/commits` and `/files` scroll to
+ * their section.
+ */
 export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
   const n = Number(rest[0])
   // 0 is no pull request; the server answers that it is not found.
   const number = Number.isSafeInteger(n) && n > 0 ? n : 0
-  const tab: Tab =
-    rest[1] === "commits" || rest[1] === "files" ? rest[1] : "conversation"
+  const section = rest[1] === "commits" || rest[1] === "files" ? rest[1] : null
   const q = usePull(repo, number)
   const d = q.data
   // The changes come from the repository, not the database.
   const cmp = useCompare(repo, d?.base ?? "", d?.head ?? "")
+  const files = useMemo(() => cmp.data && parseDiff(cmp.data.diff), [cmp.data])
+  const [tree, setTree] = useState<HTMLElement | null>(null)
+  const loaded = !!cmp.data
+  useEffect(() => {
+    if (section && loaded)
+      document.getElementById(section)?.scrollIntoView({ block: "start" })
+  }, [section, loaded])
 
-  if (q.error) return <QueryError error={q.error} />
-  if (!d) return <Skeleton className="h-96" />
+  if (q.error)
+    return (
+      <PageBody>
+        <QueryError error={q.error} />
+      </PageBody>
+    )
+  if (!d)
+    return (
+      <PageBody>
+        <Skeleton className="h-96" />
+      </PageBody>
+    )
   const { pull } = d
   const commits = cmp.data?.commits
-  const github = !!pull.github_url
-  // Who merged a pull request from GitHub is known only for merges seen
-  // after the first import.
-  const subject =
-    pull.state === "merged"
-      ? (pull.merged_by ?? (github ? null : "A push"))
-      : pull.author
+  const adds = files?.reduce((n, f) => n + f.adds, 0) ?? 0
+  const dels = files?.reduce((n, f) => n + f.dels, 0) ?? 0
 
   return (
-    <div className="grid grid-cols-1 gap-6">
-      <div className="grid grid-cols-1 gap-3">
-        <div className="flex flex-wrap items-start gap-3">
-          <h2 className="min-w-0 flex-1 text-2xl break-words">
-            {pull.title}{" "}
-            <span className="font-light text-muted-foreground">
-              #{pull.number}
-            </span>
-          </h2>
-          {pull.github_url && (
-            <Button asChild variant="outline" size="sm">
-              <a href={pull.github_url} target="_blank" rel="noreferrer">
-                <ExternalLink />
-                View on GitHub
-              </a>
-            </Button>
+    <div className="flex min-h-[calc(100svh-3rem)] flex-col lg:flex-row">
+      <aside className="order-last shrink-0 border-t border-hairline lg:order-none lg:w-75 lg:border-t-0 lg:border-r">
+        <div className="grid gap-8 px-4 py-6 lg:sticky lg:top-12 lg:max-h-[calc(100svh-3rem)] lg:overflow-y-auto">
+          <section id="commits" className="scroll-mt-14">
+            <div className="flex items-center gap-2 px-1 pb-3">
+              <h2 className="label-caps">Commits</h2>
+              {commits && (
+                <span className="font-mono text-[11px] font-medium text-label">
+                  {commits.length}
+                  {cmp.data?.more && "+"}
+                </span>
+              )}
+              {files && (
+                <span className="ml-auto">
+                  <DiffStat adds={adds} dels={dels} />
+                </span>
+              )}
+            </div>
+            {cmp.error ? (
+              <QueryError error={cmp.error} />
+            ) : !commits ? (
+              <Skeleton className="h-32" />
+            ) : (
+              <CommitStack
+                repo={repo}
+                commits={commits}
+                more={!!cmp.data?.more}
+                target={pull.target}
+                base={cmp.data!.merge_base}
+              />
+            )}
+          </section>
+          {files && files.length > 0 && (
+            <section className="max-lg:hidden">
+              <div className="flex items-center gap-2 px-1 pb-2">
+                <h2 className="label-caps">Files</h2>
+                <span className="font-mono text-[11px] font-medium text-label">
+                  {files.length}
+                </span>
+              </div>
+              <div ref={setTree} />
+            </section>
           )}
         </div>
-        <div className="flex flex-wrap items-center gap-2 text-sm text-muted-foreground">
-          <PullStateBadge state={pull.state} />
-          <span>
-            {subject === null ? (
-              "Merged"
-            ) : (
-              <>
-                <Who name={subject} pull={pull} server={subject === "A push"} />{" "}
-                {pull.state === "merged" ? "merged" : "wants to merge"}
-              </>
-            )}{" "}
-            {commits && (
-              <>
-                {commits.length}
-                {cmp.data?.more && "+"}{" "}
-                {commits.length === 1 ? "commit" : "commits"}{" "}
-              </>
-            )}
-            into <BranchName name={pull.target} /> from{" "}
-            <BranchName name={pull.source} />
-          </span>
+      </aside>
+      <div className="grid min-w-0 flex-1 grid-cols-1 content-start gap-8 px-4 py-8 md:px-8">
+        <div className="grid gap-3">
+          <h1 className="font-display text-[30px] leading-9 break-words text-ink">
+            {pull.title}{" "}
+            <span className="font-sans text-2xl font-light tracking-normal text-label">
+              #{pull.number}
+            </span>
+          </h1>
+          <div className="flex flex-wrap items-center gap-x-3 gap-y-2 text-[13px] text-muted-foreground">
+            <PullStateBadge state={pull.state} />
+            <span>
+              <Who
+                name={pull.author}
+                pull={pull}
+                className="font-normal text-muted-foreground"
+              />
+              {commits && (
+                <>
+                  {" · "}
+                  {commits.length}
+                  {cmp.data?.more && "+"}{" "}
+                  {commits.length === 1 ? "commit" : "commits"}
+                </>
+              )}
+              {" · "}
+              <span title={fullDate(pull.created_ms / 1000)}>
+                {since(pull.created_ms / 1000)}
+              </span>
+            </span>
+            {/* Beside the page from xl on. */}
+            <span className="flex min-w-0 items-center gap-1.5 font-mono text-[11px] text-body xl:hidden">
+              <span className="truncate">{pull.source}</span>
+              <span className="text-label">→</span>
+              <span className="truncate">{pull.target}</span>
+            </span>
+          </div>
         </div>
-      </div>
-      <PullTabs
-        repo={repo}
-        number={pull.number}
-        tab={tab}
-        commits={commits?.length}
-        files={cmp.data && countFiles(cmp.data.diff)}
-      />
-      {tab === "conversation" ? (
         <Conversation repo={repo} d={d} />
-      ) : cmp.error ? (
-        <QueryError error={cmp.error} />
-      ) : !cmp.data ? (
-        <Skeleton className="h-64" />
-      ) : tab === "commits" ? (
-        <CommitRows repo={repo} commits={cmp.data.commits} />
-      ) : (
-        <ChangedFiles
-          repo={repo}
-          diff={cmp.data.diff}
-          truncated={cmp.data.truncated}
-          oldRev={cmp.data.merge_base}
-          newRev={cmp.data.head}
-          tree="lager-pull-files"
-        />
-      )}
+        <section id="files" className="scroll-mt-14">
+          <SectionHead title="Files changed" count={files?.length} />
+          {cmp.error ? (
+            <QueryError error={cmp.error} />
+          ) : !cmp.data ? (
+            <Skeleton className="h-64" />
+          ) : (
+            <ChangedFiles
+              repo={repo}
+              diff={cmp.data.diff}
+              truncated={cmp.data.truncated}
+              oldRev={cmp.data.merge_base}
+              newRev={cmp.data.head}
+              tree={tree}
+            />
+          )}
+        </section>
+      </div>
+      <aside className="order-last shrink-0 border-t border-hairline px-4 py-6 lg:order-none max-xl:lg:hidden xl:w-66 xl:border-t-0 xl:border-l">
+        <div className="grid gap-6 xl:sticky xl:top-18">
+          <Stepper pull={pull} />
+          <PullProperties pull={pull} files={files?.length} />
+        </div>
+      </aside>
     </div>
   )
 }
 
-function countFiles(diff: string) {
-  return diff.match(/^diff --git /gm)?.length ?? 0
-}
-
-function PullTabs({
+/**
+ * The commits from the head down, as cards on a rail that ends at the
+ * target branch; numbered from the bottom, the head in blue.
+ */
+function CommitStack({
   repo,
-  number,
-  tab,
   commits,
-  files,
+  more,
+  target,
+  base,
 }: {
   repo: string
-  number: number
-  tab: Tab
-  commits?: number
-  files?: number
+  commits: Commit[]
+  more: boolean
+  target: string
+  base: string
 }) {
-  const tabs: {
-    tab: Tab
-    label: string
-    icon: typeof GitMerge
-    count?: number
-  }[] = [
-    { tab: "conversation", label: "Conversation", icon: MessageSquare },
-    {
-      tab: "commits",
-      label: "Commits",
-      icon: GitCommitHorizontal,
-      count: commits,
-    },
-    { tab: "files", label: "Files changed", icon: FileDiff, count: files },
-  ]
+  const rail = <span className="ml-[22px] block h-2.5 w-px bg-stage-off" />
   return (
-    <nav className="-mt-2 flex [scrollbar-width:none] gap-1 overflow-x-auto overflow-y-hidden border-b">
-      {tabs.map((t) => (
-        <Link
-          key={t.tab}
-          to="/$"
-          params={{
-            _splat: href(
-              repo,
-              "pull",
-              String(number),
-              t.tab === "conversation" ? undefined : t.tab
-            ),
-          }}
-          className={cn(
-            "-mb-px flex shrink-0 items-center gap-2 border-b-2 px-2.5 py-2 text-sm whitespace-nowrap sm:px-3",
-            tab === t.tab
-              ? "border-foreground font-medium"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <t.icon className="hidden size-4 sm:block" />
-          {t.label}
-          {t.count !== undefined && (
-            <span className="rounded-full bg-muted px-1.5 text-xs">
-              {t.count}
+    <ol>
+      {commits.map((c, i) => (
+        <li key={c.oid}>
+          {i > 0 && rail}
+          <Link
+            to="/$"
+            params={{ _splat: href(repo, "commit", c.oid) }}
+            className={cn(
+              "grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5 rounded-[7px] bg-card px-3 py-2.5 shadow-[0_0_0_1px_var(--border),0_1px_2px_#0000000a] hover:shadow-[0_0_0_1px_var(--stage-off),0_1px_3px_#00000014]",
+              i === 0 && "shadow-[0_0_0_1.5px_var(--primary)]!"
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-5 items-center justify-center rounded-[4px] font-mono text-[10px] font-semibold",
+                i === 0
+                  ? "bg-primary text-primary-foreground"
+                  : "border text-muted-foreground"
+              )}
+            >
+              {more ? "" : commits.length - i}
             </span>
-          )}
-        </Link>
+            <span className="truncate text-[13px] font-medium text-ink">
+              {c.subject}
+            </span>
+            <span />
+            <span className="flex items-center justify-between font-mono text-[11px] text-label">
+              {short(c.oid).slice(0, 7)}
+              <span
+                className="font-sans text-xs"
+                title={fullDate(c.committer.time)}
+              >
+                {since(c.committer.time)}
+              </span>
+            </span>
+          </Link>
+        </li>
       ))}
-    </nav>
+      <li>
+        {commits.length > 0 && rail}
+        <div className="flex items-center gap-2.5 py-1 pl-4">
+          <span className="size-2.5 rounded-[2px] border-[1.5px] border-label" />
+          <span className="truncate font-mono text-xs text-body">{target}</span>
+          <span className="font-mono text-[11px] text-label">
+            {short(base).slice(0, 7)}
+          </span>
+        </div>
+      </li>
+    </ol>
+  )
+}
+
+/** Opened, then merged or closed: done steps in ink, the current one tinted. */
+function Stepper({ pull }: { pull: Pull }) {
+  const end = pull.closed_ms ?? pull.updated_ms
+  const steps: {
+    label: string
+    time?: number
+    state: "done" | "now" | "next"
+  }[] =
+    pull.state === "open"
+      ? [
+          { label: "Open", time: pull.created_ms, state: "now" },
+          { label: "Merged", state: "next" },
+        ]
+      : [
+          { label: "Open", time: pull.created_ms, state: "done" },
+          {
+            label: pull.state === "merged" ? "Merged" : "Closed",
+            time: end,
+            state: "done",
+          },
+        ]
+  return (
+    <ol className="grid">
+      {steps.map((s, i) => (
+        <li key={s.label}>
+          {i > 0 && (
+            <span
+              className={cn(
+                "ml-[17px] block h-3 w-0.5",
+                s.state === "next" ? "bg-stage-off" : "bg-ink"
+              )}
+            />
+          )}
+          <div
+            className={cn(
+              "flex h-10 items-center gap-3 rounded-md px-2.5 text-[13px]",
+              s.state === "now" && "bg-tint font-medium text-ink"
+            )}
+          >
+            <span
+              className={cn(
+                "flex size-4 shrink-0 items-center justify-center rounded-[4px]",
+                s.state === "done" && "bg-ink text-background",
+                s.state === "now" && "bg-primary",
+                s.state === "next" && "border border-dashed border-label"
+              )}
+            >
+              {s.state === "done" && (
+                <Check className="size-3" strokeWidth={3} />
+              )}
+            </span>
+            <span
+              className={cn(
+                s.state === "next"
+                  ? "text-label"
+                  : s.state === "done" && "text-muted-foreground"
+              )}
+            >
+              {s.label}
+            </span>
+            {s.time && (
+              <span
+                className={cn(
+                  "ml-auto text-xs",
+                  s.state === "now" ? "text-tint-foreground" : "text-label"
+                )}
+                title={fullDate(s.time / 1000)}
+              >
+                {new Date(s.time).toLocaleDateString(undefined, {
+                  month: "short",
+                  day: "numeric",
+                })}
+              </span>
+            )}
+          </div>
+        </li>
+      ))}
+    </ol>
+  )
+}
+
+function PullProperties({ pull, files }: { pull: Pull; files?: number }) {
+  // Who merged a pull request from GitHub is known only for merges seen
+  // after the first import.
+  const merger =
+    pull.state === "merged"
+      ? (pull.merged_by ?? (pull.github_url ? null : "A push"))
+      : null
+  return (
+    <dl className="grid grid-cols-[5rem_minmax(0,1fr)] items-center gap-y-3.5 border-t border-hairline pt-6 text-xs">
+      <dt className="text-label">Author</dt>
+      <dd className="flex min-w-0 items-center gap-2 text-[13px]">
+        <Avatar name={pull.author} className="size-5 text-[9px]" />
+        <Who name={pull.author} pull={pull} className="truncate" />
+      </dd>
+      <dt className="text-label">Branch</dt>
+      <dd className="truncate font-mono text-xs text-ink" title={pull.source}>
+        {pull.source}
+      </dd>
+      <dt className="text-label">Into</dt>
+      <dd className="truncate font-mono text-xs text-ink" title={pull.target}>
+        {pull.target}
+      </dd>
+      {files !== undefined && (
+        <>
+          <dt className="text-label">Files</dt>
+          <dd className="text-[13px] font-medium text-ink">{files}</dd>
+        </>
+      )}
+      {merger && (
+        <>
+          <dt className="text-label">Merged by</dt>
+          <dd className="truncate text-[13px]">
+            <Who name={merger} pull={pull} server={merger === "A push"} />
+          </dd>
+        </>
+      )}
+      {pull.github_url && (
+        <>
+          <dt className="text-label">GitHub</dt>
+          <dd>
+            <a
+              href={pull.github_url}
+              target="_blank"
+              rel="noreferrer"
+              className="inline-flex items-center gap-1 text-[13px] font-medium text-ink hover:underline"
+            >
+              View
+              <ExternalLink className="size-3 text-label" />
+            </a>
+          </dd>
+        </>
+      )}
+    </dl>
   )
 }
 
@@ -312,9 +511,9 @@ function CommentCard({
 }) {
   return (
     <div className="flex gap-3">
-      <Avatar name={author} className="mt-2 size-8 text-xs" />
-      <div className="min-w-0 flex-1 rounded-lg border">
-        <div className="border-b bg-muted/40 px-4 py-2 text-sm">
+      <Avatar name={author} className="mt-2 size-7 text-[11px]" />
+      <div className="min-w-0 flex-1 rounded-[9px] border">
+        <div className="border-b border-hairline px-4 py-2 text-[13px]">
           <Who name={author} pull={pull} />{" "}
           <span className="text-muted-foreground" title={fullDate(time / 1000)}>
             commented {ago(time / 1000)}
@@ -387,8 +586,8 @@ function TimelineEvent({
       </Link>
     )
   const line = (icon: ReactNode, text: ReactNode) => (
-    <div className="flex items-center gap-3 pl-1.5 text-sm text-muted-foreground">
-      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted">
+    <div className="flex items-center gap-3 pl-0.5 text-[13px] text-muted-foreground">
+      <span className="flex size-6 shrink-0 items-center justify-center rounded-full bg-muted text-muted-foreground">
         {icon}
       </span>
       <span className="min-w-0">
@@ -409,14 +608,14 @@ function TimelineEvent({
       )
     case "closed":
       return line(
-        <GitPullRequestClosed className="size-3.5 text-red-600" />,
+        <GitPullRequestClosed className="size-3.5 text-removed" />,
         who("closed")
       )
     case "reopened":
       return line(<RotateCcw className="size-3.5" />, who("reopened"))
     case "merged":
       return line(
-        <GitMerge className="size-3.5 text-violet-600" />,
+        <GitMerge className="size-3.5 text-ink" />,
         <>
           {e.author ? (
             <>
@@ -475,8 +674,8 @@ function MergeBox({ repo, d }: { repo: string; d: PullDetail }) {
     <div className="flex gap-3">
       <span
         className={cn(
-          "mt-2 flex size-8 shrink-0 items-center justify-center rounded-full text-white",
-          status.ok ? "bg-emerald-600" : "bg-amber-600"
+          "mt-2 flex size-7 shrink-0 items-center justify-center rounded-full text-white",
+          status.ok ? "bg-added" : "bg-removed"
         )}
       >
         {status.ok ? (
@@ -485,7 +684,7 @@ function MergeBox({ repo, d }: { repo: string; d: PullDetail }) {
           <AlertTriangle className="size-4" />
         )}
       </span>
-      <div className="min-w-0 flex-1 rounded-lg border">
+      <div className="min-w-0 flex-1 rounded-[9px] border">
         <div className="p-4">
           <p className="font-medium">{status.title}</p>
           <p className="text-sm text-muted-foreground">{status.text}</p>
@@ -498,7 +697,7 @@ function MergeBox({ repo, d }: { repo: string; d: PullDetail }) {
           )}
         </div>
         {d.can_merge && (
-          <div className="flex flex-wrap items-center gap-2 border-t bg-muted/40 px-4 py-3">
+          <div className="flex flex-wrap items-center gap-2 border-t border-hairline px-4 py-3">
             <div
               role="group"
               aria-label="Merge pull request"
@@ -604,7 +803,7 @@ function CommentForm({ repo, d }: { repo: string; d: PullDetail }) {
         )
       }}
     >
-      <Avatar name={state.user} className="mt-2 size-8 text-xs" />
+      <Avatar name={state.user} className="mt-2 size-7 text-[11px]" />
       <div className="grid min-w-0 flex-1 grid-cols-1 gap-2">
         <MessageEditor
           repo={repo}
@@ -630,7 +829,7 @@ function CommentForm({ repo, d }: { repo: string; d: PullDetail }) {
             >
               {pull.state === "open" ? (
                 <>
-                  <GitPullRequestClosed className="text-red-600" />
+                  <GitPullRequestClosed className="text-removed" />
                   Close pull request
                 </>
               ) : (

@@ -27,6 +27,7 @@ import { QueryError } from "@/components/query-error"
 import { Avatar } from "./avatar"
 import { AuthorName } from "./author-name"
 import { ChangedFiles } from "./changes"
+import { PageTitle, SectionHead, rowList } from "@/components/frame"
 import { MessageEditor } from "./message-editor"
 
 /**
@@ -55,13 +56,8 @@ export function ComparePage({
 
   return (
     <div className="grid grid-cols-1 gap-6">
-      <div>
-        <h2 className="text-lg font-semibold">Open a pull request</h2>
-        <p className="text-sm text-muted-foreground">
-          Choose the branch with the changes and the branch to merge them into.
-        </p>
-      </div>
-      <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/40 p-3 text-sm">
+      <PageTitle>Open a pull request</PageTitle>
+      <div className="flex flex-wrap items-center gap-2 text-[13px]">
         <BranchSelect
           label="into"
           value={base}
@@ -77,7 +73,7 @@ export function ComparePage({
         />
       </div>
       {!valid ? (
-        <p className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
+        <p className="border-t border-hairline py-4 text-[13px] text-muted-foreground">
           Choose two different branches.
         </p>
       ) : q.error ? (
@@ -85,7 +81,7 @@ export function ComparePage({
       ) : !q.data ? (
         <Skeleton className="h-64" />
       ) : q.data.commits.length === 0 ? (
-        <p className="rounded-lg border border-dashed p-10 text-center text-sm text-muted-foreground">
+        <p className="border-t border-hairline py-4 text-[13px] text-muted-foreground">
           <span className="font-mono">{base}</span> already contains every
           commit of <span className="font-mono">{head}</span>.
         </p>
@@ -97,14 +93,11 @@ export function ComparePage({
             head={head}
             commits={q.data.commits}
           />
-          <section className="grid grid-cols-1 gap-2">
-            <h3 className="text-sm font-medium">
-              {q.data.commits.length}
-              {q.data.more && "+"}{" "}
-              {q.data.commits.length === 1 ? "commit" : "commits"}
-            </h3>
+          <section>
+            <SectionHead title="Commits" count={q.data.commits.length} />
             <CommitRows repo={repo} commits={q.data.commits} />
           </section>
+          <SectionHead title="Files changed" className="-mb-4" />
           <ChangedFiles
             repo={repo}
             diff={q.data.diff}
@@ -133,7 +126,7 @@ function BranchSelect({
     <label className="flex items-center gap-2">
       <span className="text-muted-foreground">{label}</span>
       <Select value={value} onValueChange={onChange}>
-        <SelectTrigger size="sm" className="max-w-56 bg-background font-mono">
+        <SelectTrigger size="sm" className="max-w-56 font-mono text-xs">
           <GitBranch />
           <SelectValue placeholder="branch" />
         </SelectTrigger>
@@ -187,7 +180,7 @@ function CreateForm({
   }
   return (
     <form
-      className="grid grid-cols-1 gap-3 rounded-lg border p-4"
+      className="grid grid-cols-1 gap-3 rounded-[9px] border p-4"
       onSubmit={(e) => {
         e.preventDefault()
         create.mutate(
@@ -251,9 +244,12 @@ export function CommitRows({
   commits: Commit[]
 }) {
   return (
-    <ul className="divide-y rounded-lg border">
+    <ul className={rowList}>
       {[...commits].reverse().map((c) => (
-        <li key={c.oid} className="flex items-center gap-3 px-4 py-2.5 text-sm">
+        <li
+          key={c.oid}
+          className="flex h-10 items-center gap-3 px-1 text-[13px]"
+        >
           <Avatar name={c.author.name} />
           <Link
             to="/$"

@@ -1,15 +1,14 @@
-import { useEffect, useState } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 import { Link, useLocation, useNavigate } from "@tanstack/react-router"
 import {
-  BookLock,
-  BookOpen,
   ChevronsUpDown,
-  House,
+  LibraryBig,
   LogIn,
   LogOut,
-  User,
+  Plus,
   SearchIcon,
   Settings,
+  User,
 } from "lucide-react"
 
 import {
@@ -19,7 +18,7 @@ import {
   useRepos,
   type RepoSummary,
 } from "@/lib/api"
-import { href } from "@/lib/paths"
+import { href, type Location, type View } from "@/lib/paths"
 import { cn } from "@/lib/utils"
 import {
   DropdownMenu,
@@ -33,29 +32,45 @@ import {
   Sidebar,
   SidebarContent,
   SidebarFooter,
-  SidebarGroup,
-  SidebarGroupLabel,
   SidebarHeader,
-  SidebarMenu,
-  SidebarMenuBadge,
-  SidebarMenuButton,
-  SidebarMenuItem,
-  SidebarMenuSkeleton,
-  SidebarTrigger,
   useSidebar,
 } from "@/components/ui/sidebar"
-import { Avatar } from "@/components/repo/avatar"
+import { Skeleton } from "@/components/ui/skeleton"
+import { Avatar, RepoDot } from "@/components/repo/avatar"
 import { LagerMark } from "@/components/lager-mark"
-import { Button } from "@/components/ui/button"
-import { OmnibarShortcut, useCurrentRepo } from "@/components/omnibar"
+import { GithubMark } from "@/components/github-mark"
+import { ModKey, useCurrentLocation } from "@/components/omnibar"
 
 /** Repositories per group before "All repositories". */
 const SHOWN = 8
 
-export function AppSidebar({ onSearch }: { onSearch: () => void }) {
+/** A row of the sidebar; the selected one is a white card with a hairline ring. */
+const item = (active: boolean) =>
+  cn(
+    "flex h-7.5 w-full min-w-0 shrink-0 items-center gap-2.5 rounded-md px-2 text-left text-[13px] font-medium text-body outline-none hover:bg-ink/[0.04] focus-visible:ring-2 focus-visible:ring-ring/50 [&>svg]:size-[15px] [&>svg]:shrink-0 [&>svg]:text-muted-foreground",
+    active &&
+      "bg-sidebar-accent text-ink shadow-[0_0_0_1px_var(--stage-off),0_1px_2px_#0000000a] hover:bg-sidebar-accent"
+  )
+
+/** A small muted count at the end of a row. */
+function Count({ children }: { children: ReactNode }) {
+  return (
+    <span className="ml-auto shrink-0 text-[11px] leading-3.5 font-medium text-label">
+      {children}
+    </span>
+  )
+}
+
+export function AppSidebar({
+  onSearch,
+  onCreateRepo,
+}: {
+  onSearch: () => void
+  onCreateRepo: () => void
+}) {
   const user = useLive()?.user
   const repos = useRepos()
-  const current = useCurrentRepo()
+  const loc = useCurrentLocation()
   const pathname = useLocation({ select: (l) => l.pathname })
   const close = useCloseOnMobile()
 
@@ -65,102 +80,101 @@ export function AppSidebar({ onSearch }: { onSearch: () => void }) {
   const others = repos.data?.repos.filter((r) => !own?.includes(r))
 
   return (
-    <Sidebar>
-      <SidebarHeader>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton asChild className="font-semibold">
-              <Link to="/" onClick={close}>
-                <LagerMark />
-                lager
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
-        <SidebarMenu>
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              variant="outline"
-              className="text-muted-foreground"
-              onClick={onSearch}
+    <Sidebar className="border-sidebar-border">
+      <SidebarHeader className="gap-4.5 px-3 pt-4 pb-0">
+        <div className="flex items-center justify-between py-1 pr-0.5 pl-1.5">
+          <Link to="/" onClick={close} className="flex items-center gap-2.25">
+            <span className="flex size-6.5 items-center justify-center rounded-md bg-[#F3ECE2]">
+              <LagerMark className="size-5" />
+            </span>
+            <span className="font-display text-[19px] leading-6 text-ink">
+              lager
+            </span>
+          </Link>
+          {user && (
+            <button
+              type="button"
+              onClick={() => {
+                close()
+                onCreateRepo()
+              }}
+              className="flex size-7 items-center justify-center rounded-md text-ink hover:bg-ink/[0.05]"
+              aria-label="New repository"
+              title="New repository"
             >
-              <SearchIcon />
-              <span>Search or jump to…</span>
-              <OmnibarShortcut className="ml-auto" />
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        </SidebarMenu>
+              <Plus className="size-3.5" strokeWidth={2.4} />
+            </button>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={() => {
+            close()
+            onSearch()
+          }}
+          className="flex h-9.5 w-full shrink-0 items-center gap-2.5 rounded-[10px] bg-background pr-2.5 pl-3 text-left shadow-[0_0_0_1px_var(--stage-off),0_1px_2px_#0000000a] outline-none focus-visible:ring-2 focus-visible:ring-ring/50"
+        >
+          <SearchIcon className="size-[15px] text-label" />
+          <span className="flex-1 truncate text-[13px] text-label">
+            Jump to anything
+          </span>
+          <span className="flex gap-0.75 text-[11px] leading-3.5 font-medium text-muted-foreground">
+            <kbd className="rounded-sm bg-muted px-1.25 py-px font-sans">
+              <ModKey />
+            </kbd>
+            <kbd className="rounded-sm bg-muted px-1.25 py-px font-sans">K</kbd>
+          </span>
+        </button>
       </SidebarHeader>
-      <SidebarContent>
-        <SidebarGroup>
-          <SidebarMenu>
-            <SidebarMenuItem>
-              <SidebarMenuButton asChild isActive={pathname === "/"}>
-                <Link to="/" onClick={close}>
-                  <House />
-                  Repositories
-                </Link>
-              </SidebarMenuButton>
-            </SidebarMenuItem>
-          </SidebarMenu>
-        </SidebarGroup>
+      <SidebarContent className="gap-4.5 px-3 pt-4.5">
+        <nav className="flex flex-col gap-px">
+          <Link to="/" onClick={close} className={item(pathname === "/")}>
+            <LibraryBig />
+            Repositories
+            {repos.data && <Count>{repos.data.repos.length}</Count>}
+          </Link>
+          {user && (
+            <Link
+              to="/-/settings"
+              onClick={close}
+              className={item(pathname.startsWith("/-/settings"))}
+            >
+              <Settings />
+              Settings
+            </Link>
+          )}
+        </nav>
         {!repos.data ? (
-          <SidebarGroup>
-            <SidebarMenu>
-              {[0, 1, 2].map((i) => (
-                <SidebarMenuItem key={i}>
-                  <SidebarMenuSkeleton showIcon />
-                </SidebarMenuItem>
-              ))}
-            </SidebarMenu>
-          </SidebarGroup>
+          <div className="flex flex-col gap-2 px-2">
+            {[0, 1, 2].map((i) => (
+              <Skeleton key={i} className="h-5" />
+            ))}
+          </div>
         ) : (
           <>
             {own && own.length > 0 && (
               <RepoGroup
-                label="Your repositories"
+                label="Yours"
                 repos={own}
-                current={current}
+                loc={loc}
                 strip={`${user}/`}
               />
             )}
             {others && others.length > 0 && (
               <RepoGroup
-                label={user ? "Other repositories" : "Public repositories"}
+                label={user ? "Others" : "Public"}
                 repos={others}
-                current={current}
+                loc={loc}
               />
             )}
           </>
         )}
       </SidebarContent>
-      <SidebarFooter>
+      <SidebarFooter className="gap-1 px-3 pt-2 pb-3">
         <LiveStatus />
         <UserMenu />
       </SidebarFooter>
     </Sidebar>
-  )
-}
-
-/** On phones, where the sidebar is hidden: open it, go home, or search. */
-export function MobileHeader({ onSearch }: { onSearch: () => void }) {
-  return (
-    <header className="sticky top-0 z-10 flex h-12 items-center gap-2 border-b bg-background px-3 md:hidden">
-      <SidebarTrigger />
-      <Link to="/" className="flex items-center gap-2 font-semibold">
-        <LagerMark className="size-4" />
-        lager
-      </Link>
-      <Button
-        variant="ghost"
-        size="icon"
-        className="ml-auto"
-        aria-label="Search"
-        onClick={onSearch}
-      >
-        <SearchIcon />
-      </Button>
-    </header>
   )
 }
 
@@ -175,74 +189,122 @@ function useCloseOnMobile() {
 function RepoGroup({
   label,
   repos,
-  current,
+  loc,
   strip,
 }: {
   label: string
   repos: RepoSummary[]
-  current: string | undefined
+  loc: Location | null
   /** A prefix not to repeat, such as the user's own name. */
   strip?: string
 }) {
   const close = useCloseOnMobile()
   // The current repository stays visible even past the limit.
-  const shown = repos.filter((r, i) => i < SHOWN || r.name === current)
+  const shown = repos.filter((r, i) => i < SHOWN || r.name === loc?.repo)
   return (
-    <SidebarGroup>
-      <SidebarGroupLabel>{label}</SidebarGroupLabel>
-      <SidebarMenu>
-        {shown.map((r) => (
-          <RepoItem
-            key={r.name}
-            repo={r}
-            active={r.name === current}
-            label={strip ? r.name.slice(strip.length) : r.name}
-          />
-        ))}
-        {repos.length > shown.length && (
-          <SidebarMenuItem>
-            <SidebarMenuButton
-              asChild
-              size="sm"
-              className="text-muted-foreground"
-            >
-              <Link to="/" onClick={close}>
-                All {repos.length} repositories
-              </Link>
-            </SidebarMenuButton>
-          </SidebarMenuItem>
-        )}
-      </SidebarMenu>
-    </SidebarGroup>
+    <section className="flex flex-col gap-px">
+      <h2 className="px-2 pb-1.5 label-caps">{label}</h2>
+      {shown.map((r) => (
+        <RepoItem
+          key={r.name}
+          repo={r}
+          loc={r.name === loc?.repo ? loc : null}
+          label={strip ? r.name.slice(strip.length) : r.name}
+        />
+      ))}
+      {repos.length > shown.length && (
+        <Link
+          to="/"
+          onClick={close}
+          className={cn(item(false), "pl-[33px] text-muted-foreground")}
+        >
+          All {repos.length}
+        </Link>
+      )}
+    </section>
   )
 }
 
 function RepoItem({
   repo,
-  active,
+  loc,
   label,
 }: {
   repo: RepoSummary
-  active: boolean
+  /** The page, when it belongs to this repository. */
+  loc: Location | null
   label: string
 }) {
   const close = useCloseOnMobile()
   const open = usePullCounts(repo.name).data?.open
-  const Icon = repo.anonymous_read ? BookOpen : BookLock
   return (
-    <SidebarMenuItem>
-      <SidebarMenuButton asChild isActive={active} tooltip={repo.name}>
-        <Link to="/$" params={{ _splat: href(repo.name) }} onClick={close}>
-          <Icon />
-          <span>{label}</span>
-        </Link>
-      </SidebarMenuButton>
-      {!!open && (
-        <SidebarMenuBadge title={`${open} open pull requests`}>
-          {open}
-        </SidebarMenuBadge>
-      )}
-    </SidebarMenuItem>
+    <>
+      <Link
+        to="/$"
+        params={{ _splat: href(repo.name) }}
+        onClick={close}
+        title={repo.name}
+        className={cn(item(false), loc && "font-semibold text-ink")}
+      >
+        <span className="flex w-[15px] shrink-0 justify-center">
+          {repo.mirror ? (
+            <GithubMark className="size-3 text-label" />
+          ) : (
+            <RepoDot name={repo.name} />
+          )}
+        </span>
+        <span className="truncate">{label}</span>
+        {open ? <Count>{open}</Count> : repo.mirror && <Count>mirror</Count>}
+      </Link>
+      {loc && <RepoSections loc={loc} open={open} />}
+    </>
+  )
+}
+
+/** The pages of the open repository, on an indented rail. */
+function RepoSections({ loc, open }: { loc: Location; open?: number }) {
+  const close = useCloseOnMobile()
+  // Only the owner changes the settings (the server checks it too).
+  const owner = useLive()?.user === loc.repo.split("/")[0]
+  const active: View =
+    loc.view === "blob"
+      ? "tree"
+      : loc.view === "commit" || loc.view === "branches"
+        ? "commits"
+        : loc.view === "pull" || loc.view === "compare"
+          ? "pulls"
+          : loc.view
+  const sections: { view: View; label: string; count?: number }[] = [
+    { view: "overview", label: "Overview" },
+    { view: "tree", label: "Code" },
+    { view: "pulls", label: "Pull requests", count: open || undefined },
+    { view: "commits", label: "Commits" },
+  ]
+  if (owner) sections.push({ view: "settings", label: "Settings" })
+  return (
+    <div className="pt-0.5 pb-1.5 pl-3.75">
+      <div className="flex flex-col gap-px border-l border-stage-off pl-2.5">
+        {sections.map((s) => (
+          <Link
+            key={s.view}
+            to="/$"
+            params={{
+              _splat:
+                s.view === "overview" ? href(loc.repo) : href(loc.repo, s.view),
+            }}
+            onClick={close}
+            className={cn(
+              item(active === s.view),
+              "h-7 px-2.5",
+              active !== s.view && "text-[#55555D] dark:text-body"
+            )}
+          >
+            {s.label}
+            {s.count !== undefined && <Count>{s.count}</Count>}
+          </Link>
+        ))}
+      </div>
+    </div>
   )
 }
 
@@ -250,71 +312,54 @@ function UserMenu() {
   const state = useLive()
   const navigate = useNavigate()
   const close = useCloseOnMobile()
-  const pathname = useLocation({ select: (l) => l.pathname })
   if (!state?.ready) return null
   if (!state.user) {
     return (
-      <SidebarMenu>
-        <SidebarMenuItem>
-          <SidebarMenuButton asChild>
-            <Link
-              to="/-/sign-in"
-              search={{ next: location.pathname }}
-              onClick={close}
-            >
-              <LogIn />
-              Sign in
-            </Link>
-          </SidebarMenuButton>
-        </SidebarMenuItem>
-      </SidebarMenu>
+      <Link
+        to="/-/sign-in"
+        search={{ next: location.pathname }}
+        onClick={close}
+        className={item(false)}
+      >
+        <LogIn />
+        Sign in
+      </Link>
     )
   }
   return (
-    <SidebarMenu>
-      <SidebarMenuItem>
-        <SidebarMenuButton
-          asChild
-          isActive={pathname.startsWith("/-/settings")}
-        >
+    <DropdownMenu>
+      <DropdownMenuTrigger className={cn(item(false), "group h-9")}>
+        <Avatar name={state.user} className="size-5.5" />
+        <span className="flex-1 truncate">{state.user}</span>
+        <ChevronsUpDown className="opacity-0 group-hover:opacity-100 group-data-[state=open]:opacity-100" />
+      </DropdownMenuTrigger>
+      <DropdownMenuContent side="top" align="start" className="w-56">
+        <DropdownMenuLabel>Signed in as {state.user}</DropdownMenuLabel>
+        <DropdownMenuSeparator />
+        <DropdownMenuItem asChild>
+          <Link to="/$" params={{ _splat: state.user }} onClick={close}>
+            <User />
+            Profile
+          </Link>
+        </DropdownMenuItem>
+        <DropdownMenuItem asChild>
           <Link to="/-/settings" onClick={close}>
             <Settings />
             Settings
           </Link>
-        </SidebarMenuButton>
-      </SidebarMenuItem>
-      <SidebarMenuItem>
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <SidebarMenuButton size="lg">
-              <Avatar name={state.user} className="size-7" />
-              <span className="truncate font-medium">{state.user}</span>
-              <ChevronsUpDown className="ml-auto" />
-            </SidebarMenuButton>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent side="top" align="start" className="w-56">
-            <DropdownMenuLabel>Signed in as {state.user}</DropdownMenuLabel>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem asChild>
-              <Link to="/$" params={{ _splat: state.user }} onClick={close}>
-                <User />
-                Profile
-              </Link>
-            </DropdownMenuItem>
-            <DropdownMenuItem
-              onSelect={async () => {
-                close()
-                await signOut()
-                navigate({ to: "/" })
-              }}
-            >
-              <LogOut />
-              Sign out
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </SidebarMenuItem>
-    </SidebarMenu>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          onSelect={async () => {
+            close()
+            await signOut()
+            navigate({ to: "/" })
+          }}
+        >
+          <LogOut />
+          Sign out
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
   )
 }
 
@@ -339,8 +384,8 @@ function LiveStatus() {
       <span
         className={cn(
           "size-2 rounded-full",
-          status === "connecting" && "bg-amber-500",
-          status === "offline" && "bg-red-500"
+          status === "connecting" && "bg-label",
+          status === "offline" && "bg-removed"
         )}
       />
       {status === "connecting" ? "Connecting…" : "Offline, reconnecting…"}

@@ -5,8 +5,6 @@ import {
   FilePen,
   FilePlus,
   FileSymlink,
-  Folder,
-  FolderOpen,
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
@@ -70,19 +68,19 @@ function build(files: DiffFile[]): Entry[] {
 }
 
 const icons = {
-  new: { icon: FilePlus, className: "text-emerald-600", label: "Added" },
-  deleted: { icon: FileMinus, className: "text-red-600", label: "Deleted" },
+  new: { icon: FilePlus, className: "text-added", label: "Added" },
+  deleted: { icon: FileMinus, className: "text-removed", label: "Deleted" },
   "rename-pure": {
     icon: FileSymlink,
-    className: "text-sky-600",
+    className: "text-label",
     label: "Renamed",
   },
   "rename-changed": {
     icon: FileSymlink,
-    className: "text-sky-600",
+    className: "text-label",
     label: "Renamed",
   },
-  change: { icon: FilePen, className: "text-amber-600", label: "Changed" },
+  change: { icon: FilePen, className: "text-label", label: "Changed" },
 }
 
 /**
@@ -125,12 +123,7 @@ export function DiffTree({
                   !closed.has(e.path) && "rotate-90"
                 )}
               />
-              {closed.has(e.path) ? (
-                <Folder className="size-4 shrink-0 fill-sky-500/20 text-sky-600" />
-              ) : (
-                <FolderOpen className="size-4 shrink-0 fill-sky-500/20 text-sky-600" />
-              )}
-              <span className="truncate">{e.name}</span>
+              <span className="truncate text-ink">{e.name}</span>
             </button>
             {!closed.has(e.path) && list(e.children, depth + 1)}
           </li>
@@ -148,7 +141,7 @@ export function DiffTree({
     </ul>
   )
   return (
-    <nav aria-label="Changed files" className="py-2 text-sm">
+    <nav aria-label="Changed files" className="text-[13px]">
       {list(entries, 0)}
     </nav>
   )
@@ -175,7 +168,11 @@ function FileRow({
     <button
       type="button"
       onClick={() => onSelect(leaf.index)}
-      className={cn(row, "w-full text-left", active && "bg-muted font-medium")}
+      className={cn(
+        row,
+        "w-full text-left",
+        active && "bg-tint font-medium text-ink hover:bg-tint"
+      )}
       style={indent(depth)}
       title={title}
       aria-current={active ? "location" : undefined}
@@ -184,10 +181,10 @@ function FileRow({
       <kind.icon className={cn("size-4 shrink-0", kind.className)} />
       <span className="min-w-0 flex-1 truncate">{leaf.name}</span>
       {(adds > 0 || dels > 0) && (
-        <span className="shrink-0 font-mono text-xs font-normal">
-          {adds > 0 && <span className="text-emerald-600">+{adds}</span>}
+        <span className="shrink-0 font-mono text-[11px] font-normal">
+          {adds > 0 && <span className="text-added">+{adds}</span>}
           {adds > 0 && dels > 0 && " "}
-          {dels > 0 && <span className="text-red-600">−{dels}</span>}
+          {dels > 0 && <span className="text-removed">−{dels}</span>}
         </span>
       )}
     </button>

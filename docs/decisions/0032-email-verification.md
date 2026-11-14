@@ -1,4 +1,4 @@
-# 30. Email verification
+# 32. Email verification
 
 Status: accepted; implemented in `crates/server/src/mail.rs`,
 `crates/server/src/web/emails.rs`, and `PgUsers::email_token`,
@@ -46,7 +46,7 @@ address that another user verified; that user keeps it. Among users whose
 GitHub accounts brought the same address before this decision, the first
 keeps it.
 
-Schema version 10.
+Schema version 11.
 
 ## Consequences
 
@@ -58,5 +58,5 @@ Schema version 10.
   GitHub account lists it too.
 - The SMTP password is in the environment, as the other secrets
   (decision 24).
-- Servers before this decision do not know schema version 10; upgrade
+- Servers before this decision do not know schema version 11; upgrade
   every server.

@@ -97,7 +97,7 @@ pub const GITHUB_FETCH_TIMEOUT: Duration = Duration::from_secs(1500);
 /// (docs/decisions/0029-activity-graph.md).
 pub const GITHUB_CONTRIBUTIONS_TTL: Duration = Duration::from_secs(3600);
 pub const GITHUB_CONTRIBUTIONS_TIMEOUT: Duration = Duration::from_secs(10);
-/// Email verification (docs/decisions/0030-email-verification.md): a link
+/// Email verification (docs/decisions/0032-email-verification.md): a link
 /// works this long; mail to one address waits this long between sends and
 /// stops after a number a day, whoever asks; one user sends a number a day
 /// and has a number of unverified addresses; sending waits this long.
