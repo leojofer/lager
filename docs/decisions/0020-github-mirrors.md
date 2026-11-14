@@ -86,3 +86,4 @@ object limits of the push procedure.
 - Servers before this decision ignore `mirror` and accept pushes to
   mirrors: upgrade every server before the first mirror.
 - Decision 28 lets mirrors take pushes, which go to GitHub first.
+- Decision 30 makes new GitHub repositories mirrors without a pick.

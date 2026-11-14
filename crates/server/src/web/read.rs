@@ -164,6 +164,10 @@ pub enum Query {
         name: String,
     },
     GithubDisconnect,
+    /// Turns syncing new GitHub repositories on or off.
+    GithubAuto {
+        on: bool,
+    },
 }
 
 fn default_limit() -> u32 {
@@ -295,7 +299,8 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::GithubRepos
         | Query::GithubMirror { .. }
         | Query::GithubUnmirror { .. }
-        | Query::GithubDisconnect => return super::github::run(s, who, q).await,
+        | Query::GithubDisconnect
+        | Query::GithubAuto { .. } => return super::github::run(s, who, q).await,
         Query::RepoCreate { name, public } => return create(s, who, name, *public).await,
         Query::RepoRename { .. } | Query::RepoVisibility { .. } | Query::RepoDelete { .. } => {
             return super::settings::run(s, who, q).await;
@@ -338,6 +343,7 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::GithubMirror { .. }
         | Query::GithubUnmirror { .. }
         | Query::GithubDisconnect
+        | Query::GithubAuto { .. }
         | Query::RepoCreate { .. }
         | Query::RepoRename { .. }
         | Query::RepoVisibility { .. }

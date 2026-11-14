@@ -63,35 +63,63 @@ function Github() {
       ) : (
         <section className="grid gap-2">
           <h3 className="text-sm font-medium">Account</h3>
-          <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2">
-            <GithubMark className="size-5 shrink-0" />
-            {data.account ? (
-              <>
-                <span className="text-sm">
-                  Connected as{" "}
-                  <span className="font-medium">@{data.account.login}</span>
+          <div className="divide-y rounded-md border">
+            <div className="flex flex-wrap items-center gap-3 px-3 py-2">
+              <GithubMark className="size-5 shrink-0" />
+              {data.account ? (
+                <>
+                  <span className="text-sm">
+                    Connected as{" "}
+                    <span className="font-medium">@{data.account.login}</span>
+                  </span>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    className="ml-auto"
+                    disabled={change.isPending}
+                    onClick={() => change.mutate({ op: "github_disconnect" })}
+                  >
+                    Disconnect
+                  </Button>
+                </>
+              ) : (
+                <>
+                  <span className="text-sm text-muted-foreground">
+                    {data.mirrors.length > 0
+                      ? "Not connected. Your synced repositories wait until you connect again."
+                      : "Not connected."}
+                  </span>
+                  <Button size="sm" className="ml-auto" asChild>
+                    <a href="/-/api/github/connect">Connect</a>
+                  </Button>
+                </>
+              )}
+            </div>
+            {data.account && (
+              <label className="grid gap-0.5 px-3 py-2">
+                <span className="flex items-center gap-3 text-sm">
+                  <input
+                    type="checkbox"
+                    className="size-4"
+                    checked={data.account.auto}
+                    disabled={change.isPending}
+                    onChange={(e) =>
+                      change.mutate({ op: "github_auto", on: e.target.checked })
+                    }
+                  />
+                  Sync new repositories
                 </span>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  className="ml-auto"
-                  disabled={change.isPending}
-                  onClick={() => change.mutate({ op: "github_disconnect" })}
-                >
-                  Disconnect
-                </Button>
-              </>
-            ) : (
-              <>
-                <span className="text-sm text-muted-foreground">
-                  {data.mirrors.length > 0
-                    ? "Not connected. Your synced repositories wait until you connect again."
-                    : "Not connected."}
-                </span>
-                <Button size="sm" className="ml-auto" asChild>
-                  <a href="/-/api/github/connect">Connect</a>
-                </Button>
-              </>
+                {data.account.auto && data.account.auto_error && (
+                  <span className="pl-7 text-xs text-destructive">
+                    {data.account.auto_error}
+                  </span>
+                )}
+                {data.account.auto && data.account.auto_skipped && (
+                  <span className="pl-7 text-xs text-muted-foreground">
+                    Skipped {data.account.auto_skipped}
+                  </span>
+                )}
+              </label>
             )}
           </div>
         </section>

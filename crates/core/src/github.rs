@@ -12,6 +12,10 @@
 //! A mirror that a page shows is due every few seconds, and a webhook
 //! delivery or a new watch pokes it: due at once, or again right after the
 //! sync that runs (docs/decisions/0027-live-github-mirrors.md).
+//!
+//! An account can sync new repositories: GitHub repositories the user owns
+//! that are created after the newest one seen become mirrors
+//! (docs/decisions/0030-sync-new-github-repositories.md).
 
 use std::time::Duration;
 
@@ -39,6 +43,12 @@ pub struct Account {
     pub id: i64,
     #[serde(skip)]
     pub token: String,
+    /// New repositories become mirrors.
+    pub auto: bool,
+    /// Why the last check failed.
+    pub auto_error: Option<String>,
+    /// The repositories that the last check to skip any skipped, and why.
+    pub auto_skipped: Option<String>,
 }
 
 #[derive(Clone, Debug, Serialize)]
@@ -63,6 +73,14 @@ pub struct Due {
     /// No webhook, and the last attempt to add one is old enough to try
     /// again.
     pub hook_due: bool,
+}
+
+/// An account that is due to look for new repositories.
+pub struct AutoDue {
+    pub user: String,
+    pub token: String,
+    /// GitHub's `created_at` of the newest repository seen.
+    pub since: Option<String>,
 }
 
 /// A mirror's webhook on GitHub, with what removing it needs.
@@ -100,18 +118,30 @@ impl GithubDb {
     }
 
     pub async fn account(&self, user: &str) -> Result<Option<Account>, GithubDbError> {
-        let row: Option<(String, i64, String)> = sqlx::query_as(
-            "SELECT login, github_id, token FROM lager_github_accounts WHERE user_name = $1",
+        type Row = (String, i64, String, bool, Option<String>, Option<String>);
+        let row: Option<Row> = sqlx::query_as(
+            "SELECT login, github_id, token, auto, auto_error, auto_skipped
+             FROM lager_github_accounts WHERE user_name = $1",
         )
         .bind(user)
         .fetch_optional(&self.pool)
         .await
         .map_err(unavailable)?;
-        Ok(row.map(|(login, id, token)| Account { login, id, token }))
+        Ok(row.map(
+            |(login, id, token, auto, auto_error, auto_skipped)| Account {
+                login,
+                id,
+                token,
+                auto,
+                auto_error,
+                auto_skipped,
+            },
+        ))
     }
 
     /// Connects a GitHub account, replacing an earlier one. Mirrors that
-    /// failed for want of a token are due at once.
+    /// failed for want of a token are due at once. Another GitHub account
+    /// does not sync new repositories until the user turns it on.
     pub async fn connect(
         &self,
         user: &str,
@@ -124,7 +154,10 @@ impl GithubDb {
              VALUES ($1, $2, $3, $4)
              ON CONFLICT (user_name) DO UPDATE
              SET github_id = $2, login = $3, token = $4, created_at = now(),
-                 contributions_at = NULL",
+                 contributions_at = NULL, auto_error = NULL, auto_next_at = now(),
+                 auto_skipped = CASE WHEN lager_github_accounts.github_id = $2
+                     THEN lager_github_accounts.auto_skipped END,
+                 auto = lager_github_accounts.auto AND lager_github_accounts.github_id = $2",
         )
         .bind(user)
         .bind(github_id)
@@ -269,6 +302,84 @@ impl GithubDb {
         .await
         .map_err(unavailable)?;
         tx.commit().await.map_err(unavailable)?;
+        Ok(())
+    }
+
+    /// Turns syncing new repositories on, with the newest repository seen
+    /// so far, or off. `false`: not connected.
+    pub async fn set_auto(
+        &self,
+        user: &str,
+        on: bool,
+        since: Option<&str>,
+    ) -> Result<bool, GithubDbError> {
+        let r = sqlx::query(
+            "UPDATE lager_github_accounts
+             SET auto = $2, auto_since = $3, auto_error = NULL, auto_skipped = NULL,
+                 auto_next_at = now()
+             WHERE user_name = $1",
+        )
+        .bind(user)
+        .bind(on)
+        .bind(since)
+        .execute(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        Ok(r.rows_affected() > 0)
+    }
+
+    /// Takes the account that is due longest to look for new repositories
+    /// and leases it for `lease`.
+    pub async fn claim_auto(&self, lease: Duration) -> Result<Option<AutoDue>, GithubDbError> {
+        let row: Option<(String, String, Option<String>)> = sqlx::query_as(
+            "UPDATE lager_github_accounts a
+             SET auto_next_at = now() + make_interval(secs => $1)
+             WHERE a.user_name = (
+                 SELECT user_name FROM lager_github_accounts
+                 WHERE auto AND auto_next_at <= now()
+                 ORDER BY auto_next_at
+                 LIMIT 1
+                 FOR UPDATE SKIP LOCKED
+             )
+             RETURNING a.user_name, a.token, a.auto_since",
+        )
+        .bind(lease.as_secs_f64())
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        Ok(row.map(|(user, token, since)| AutoDue { user, token, since }))
+    }
+
+    /// Records a check for new repositories: the newest repository seen,
+    /// why it failed, and the repositories it skipped, which replace the
+    /// earlier ones. The next check is due after `next`. A check that
+    /// started before the user turned syncing off or on again changes
+    /// nothing.
+    pub async fn finish_auto(
+        &self,
+        user: &str,
+        started: Option<&str>,
+        since: Option<&str>,
+        error: Option<&str>,
+        skipped: Option<&str>,
+        next: Duration,
+    ) -> Result<(), GithubDbError> {
+        sqlx::query(
+            "UPDATE lager_github_accounts
+             SET auto_since = $3, auto_error = $4,
+                 auto_skipped = coalesce($5, auto_skipped),
+                 auto_next_at = now() + make_interval(secs => $6)
+             WHERE user_name = $1 AND auto AND auto_since IS NOT DISTINCT FROM $2",
+        )
+        .bind(user)
+        .bind(started)
+        .bind(since)
+        .bind(error)
+        .bind(skipped)
+        .bind(next.as_secs_f64())
+        .execute(&self.pool)
+        .await
+        .map_err(unavailable)?;
         Ok(())
     }
 

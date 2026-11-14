@@ -16,7 +16,9 @@
 //! docs/decisions/0026-github-pull-requests.md). A mirror that a page
 //! shows syncs every few seconds, and one whose user administers the GitHub
 //! repository gets a webhook that asks for a sync at once ([`hooks`],
-//! docs/decisions/0027-live-github-mirrors.md).
+//! docs/decisions/0027-live-github-mirrors.md). An account can sync new
+//! repositories: those the user creates on GitHub become mirrors
+//! ([`Github::check_new`], docs/decisions/0030-sync-new-github-repositories.md).
 
 mod changes;
 mod hooks;
@@ -39,7 +41,7 @@ use crate::repository::{AccessCheck, Origin, PendingPush, PushAccess, Registry, 
 use lager_core::activity::Day;
 use lager_core::catalog::CatalogError;
 use lager_core::config::GithubConfig;
-use lager_core::github::{Due, GithubDb, GithubDbError, Mirror};
+use lager_core::github::{AutoDue, Due, GithubDb, GithubDbError, Mirror};
 use lager_core::identity::Identity;
 use lager_core::limits;
 use lager_core::model::{Oid, Operation, RefName, RepoId, RepoState, RequestId};
@@ -98,6 +100,8 @@ pub struct GithubRepo {
     pub description: Option<String>,
     pub default_branch: String,
     pub pushed_at: Option<String>,
+    #[serde(default)]
+    pub created_at: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -460,6 +464,12 @@ impl Github {
             }
             Err(e) => return Err(e),
         };
+        self.create_mirror(user, r).await
+    }
+
+    /// Mirrors the GitHub repository `r` as `<user>/<name>`. A retry
+    /// answers the same mirror.
+    async fn create_mirror(&self, user: &str, r: GithubRepo) -> Result<Mirror, GithubError> {
         let name = format!("{user}/{}", r.name);
         validate_repo_name(&name).map_err(|e| GithubError::Invalid(e.to_string()))?;
         let mut settings = RepoSettings::new(&name, lager_core::model::RepoId::new());
@@ -519,6 +529,41 @@ impl Github {
         Ok(())
     }
 
+    /// Turns syncing new repositories on or off. Repositories that exist
+    /// when it is turned on are not new.
+    pub async fn set_auto(&self, who: &Identity, on: bool) -> Result<(), GithubError> {
+        let user = signed_in(who)?;
+        let token = Self::token_of(self.db.account(user).await?)?;
+        let since = if on {
+            let newest = self.owned_repos(&token, 1, 1).await?;
+            newest.into_iter().next().and_then(|r| r.created_at)
+        } else {
+            None
+        };
+        if !self.db.set_auto(user, on, since.as_deref()).await? {
+            return Err(GithubError::NotConnected);
+        }
+        tracing::info!(user, on, "syncing new GitHub repositories");
+        Ok(())
+    }
+
+    /// A page of the repositories the user owns, newest first.
+    async fn owned_repos(
+        &self,
+        token: &str,
+        page: u32,
+        per_page: u32,
+    ) -> Result<Vec<GithubRepo>, GithubError> {
+        self.api(
+            token,
+            &format!(
+                "/user/repos?affiliation=owner&sort=created&direction=desc\
+                 &per_page={per_page}&page={page}"
+            ),
+        )
+        .await
+    }
+
     pub async fn disconnect(&self, who: &Identity) -> Result<(), GithubError> {
         let user = signed_in(who)?;
         self.db.disconnect(user).await?;
@@ -571,10 +616,22 @@ impl Github {
         let slots = Arc::new(Semaphore::new(limits::GITHUB_CONCURRENT_SYNCS));
         let mut tick = tokio::time::interval(limits::GITHUB_POLL_INTERVAL);
         let mut renew = tokio::time::interval(limits::GITHUB_WATCH_TTL / 3);
+        let mut auto = tokio::time::interval(limits::GITHUB_AUTO_POLL_INTERVAL);
+        let checking = Arc::new(Semaphore::new(1));
         loop {
             tokio::select! {
                 _ = tick.tick() => {}
                 _ = self.wake.notified() => {}
+                _ = auto.tick() => {
+                    if let Ok(slot) = checking.clone().try_acquire_owned() {
+                        let me = self.clone();
+                        tokio::spawn(async move {
+                            me.check_due().await;
+                            drop(slot);
+                        });
+                    }
+                    continue;
+                }
                 _ = renew.tick() => {
                     let repos: Vec<RepoId> =
                         self.watching.lock().unwrap().keys().copied().collect();
@@ -609,6 +666,93 @@ impl Github {
                     drop(slot);
                 });
             }
+        }
+    }
+
+    /// Looks for new repositories of the accounts that are due, one after
+    /// the other.
+    async fn check_due(&self) {
+        loop {
+            match self.db.claim_auto(limits::GITHUB_AUTO_LEASE).await {
+                Ok(Some(due)) => self.check_new(due).await,
+                Ok(None) => break,
+                Err(e) => {
+                    tracing::warn!(error = %e, "new GitHub repositories not looked for");
+                    break;
+                }
+            }
+        }
+    }
+
+    /// Mirrors the repositories the user created on GitHub since the newest
+    /// one seen, oldest first. One whose name is taken here is skipped for
+    /// good; after another failure, the check continues from there later.
+    async fn check_new(&self, due: AutoDue) {
+        let user = due.user.as_str();
+        let mut new = Vec::new();
+        let mut error = None;
+        'pages: for page in 1..=MAX_LIST_PAGES {
+            let list = match self.owned_repos(&due.token, page, 100).await {
+                Ok(l) => l,
+                Err(e) => {
+                    error = Some(e.to_string());
+                    break;
+                }
+            };
+            let last = list.len() < 100;
+            for r in list {
+                let Some(created) = r.created_at.clone() else {
+                    continue;
+                };
+                if due.since.as_ref().is_some_and(|s| created <= *s) {
+                    break 'pages;
+                }
+                new.push((created, r));
+            }
+            if last {
+                break;
+            }
+        }
+        if error.is_some() {
+            // Oldest first needs the whole list.
+            new.clear();
+        }
+        let mut since = due.since.clone();
+        let mut skipped = Vec::new();
+        for (created, r) in new.into_iter().rev() {
+            let github = r.full_name.clone();
+            match self.create_mirror(user, r).await {
+                Ok(m) => {
+                    tracing::info!(user, github, repo = %m.name, "new GitHub repository synced");
+                }
+                Err(e @ (GithubError::Exists(_) | GithubError::Invalid(_))) => {
+                    tracing::info!(user, github, error = %e, "new GitHub repository skipped");
+                    skipped.push(format!("{github}: {e}"));
+                }
+                Err(e) => {
+                    error = Some(e.to_string());
+                    break;
+                }
+            }
+            since = Some(created);
+        }
+        if let Some(e) = &error {
+            tracing::info!(user, error = %e, "new GitHub repositories not looked for");
+        }
+        let skipped = (!skipped.is_empty()).then(|| skipped.join("; "));
+        if let Err(e) = self
+            .db
+            .finish_auto(
+                user,
+                due.since.as_deref(),
+                since.as_deref(),
+                error.as_deref(),
+                skipped.as_deref(),
+                limits::GITHUB_AUTO_INTERVAL,
+            )
+            .await
+        {
+            tracing::warn!(user, error = %e, "check for new GitHub repositories not recorded");
         }
     }
 
