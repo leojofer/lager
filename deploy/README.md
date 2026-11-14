@@ -33,7 +33,7 @@ rollback of the schema.
 ## Environment
 
 Set these in the Dokploy service's **Environment**. lager's variables are
-listed in the [README](../README.md#configuration); the compose file sets
+listed in the [agent README](../README.agents.md#configuration); the compose file sets
 `LAGER_DATABASE_URL` and `LAGER_NATS_URL` itself.
 
 ```bash
