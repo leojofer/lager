@@ -39,6 +39,8 @@ pub struct AppInner {
     pub activity: Arc<crate::activity::Activity>,
     /// GitHub mirrors, with `[github]`.
     pub github: Option<Arc<crate::github::Github>>,
+    /// Mail that verifies email addresses, with `LAGER_SMTP_URL`.
+    pub mail: Option<Arc<crate::mail::Mailer>>,
     pub processes: Arc<Semaphore>,
     pub socket_path: PathBuf,
     pub health: health::Health,

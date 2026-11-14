@@ -34,11 +34,13 @@ const GROUPS = [
 function Settings() {
   const state = useLive()
   const pathname = useLocation({ select: (l) => l.pathname })
+  // With the query, so a verification link survives signing in.
+  const here = useLocation({ select: (l) => l.href })
   if (!state?.ready) return <p>Connecting…</p>
   if (!state.user)
     return (
       <p>
-        <Link to="/-/sign-in" search={{ next: pathname }} className="underline">
+        <Link to="/-/sign-in" search={{ next: here }} className="underline">
           Sign in
         </Link>{" "}
         to change your settings.

@@ -54,11 +54,32 @@ LAGER_SSH_PORT=2222           # staging; production leaves it out and gets 22
 # LAGER_SIGN_UP=true
 # LAGER_GITHUB_CLIENT_ID=...
 # LAGER_GITHUB_CLIENT_SECRET=...
+# LAGER_SMTP_URL=smtps://user:password@smtp.example.com
+# LAGER_MAIL_FROM=Lager <git@example.com>
 ```
 
 PostgreSQL takes `POSTGRES_PASSWORD` only when it creates the database. To
 change it later, change it in the database first
 (`ALTER USER lager PASSWORD '...'`), then in Dokploy.
+
+### Mail
+
+Verification mails for the email addresses users add need an SMTP
+service (Resend, Postmark, Amazon SES, Fastmail, …); see
+[decision 30](../docs/decisions/0030-email-verification.md). Without it,
+users get only the addresses their GitHub account verified.
+
+1. At the provider, add the sending domain and create SMTP credentials.
+   Publish the SPF and DKIM records it lists in that domain's DNS, or
+   mailboxes reject or junk the mails.
+2. In Dokploy, set `LAGER_SMTP_URL` and `LAGER_MAIL_FROM`; `LAGER_DOMAIN`
+   is set already, and the links in mails lead there. Use `smtps://` with
+   port 465, or `smtp://…:587?tls=required`. Percent-encode `@`, `:`, and
+   `/` in the user name and password (`@` is `%40`).
+3. Redeploy. A wrong URL or sender stops the server at start, and the
+   deployment logs say which.
+
+Add an address under **Settings → Emails** to see a mail arrive.
 
 For a new SSH host key: `ssh-keygen -t ed25519 -N '' -C lager -f key`, and
 paste the contents of `key`. Keep it: clients refuse a changed host key.

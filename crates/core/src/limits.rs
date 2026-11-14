@@ -97,6 +97,16 @@ pub const GITHUB_FETCH_TIMEOUT: Duration = Duration::from_secs(1500);
 /// (docs/decisions/0029-activity-graph.md).
 pub const GITHUB_CONTRIBUTIONS_TTL: Duration = Duration::from_secs(3600);
 pub const GITHUB_CONTRIBUTIONS_TIMEOUT: Duration = Duration::from_secs(10);
+/// Email verification (docs/decisions/0030-email-verification.md): a link
+/// works this long; mail to one address waits this long between sends and
+/// stops after a number a day, whoever asks; one user sends a number a day
+/// and has a number of unverified addresses; sending waits this long.
+pub const EMAIL_TOKEN_TTL: Duration = Duration::from_secs(24 * 3600);
+pub const EMAIL_RESEND_INTERVAL: Duration = Duration::from_secs(60);
+pub const EMAIL_MAILS_PER_ADDRESS_PER_DAY: i64 = 5;
+pub const EMAIL_MAILS_PER_USER_PER_DAY: i64 = 20;
+pub const EMAIL_UNVERIFIED_PER_USER: i64 = 5;
+pub const EMAIL_SEND_TIMEOUT: Duration = Duration::from_secs(15);
 /// GitHub API pages of 100 that one mirror sync reads for pull requests
 /// and comments; a first import continues in the next syncs.
 pub const GITHUB_API_PAGES_PER_SYNC: u32 = 10;

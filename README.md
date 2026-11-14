@@ -43,6 +43,8 @@ To run `lager` by hand, load the configuration first:
 For GitHub mirrors, register a GitHub OAuth app with the callback URL
 `http://127.0.0.1:8080/-/api/github/callback` and start with
 `LAGER_GITHUB_CLIENT_ID=... LAGER_GITHUB_CLIENT_SECRET=... scripts/local.ts`.
+For verification mails, start with `LAGER_SMTP_URL`, `LAGER_MAIL_FROM`, and
+`LAGER_DOMAIN=localhost:3000`.
 
 It needs Rust (rustup reads `rust-toolchain.toml`), the OpenSSL headers
 (`libssl-dev`), Bun, Docker with Compose, and Git 2.45 or later.
@@ -175,6 +177,8 @@ An empty variable counts as unset. Limits and timings are fixed in
 | `LAGER_SSH_HOST_KEY` | none | Turns on Git over SSH. An OpenSSH private key without a passphrase, in double quotes across its lines; the same on every server, and kept: clients refuse a changed host key. |
 | `LAGER_SSH_LISTEN` | `0.0.0.0:2222` | |
 | `LAGER_SSH_PORT` | `22` | The port clients connect to; the clone menu shows `ssh://git@<domain>:<port>` unless it is 22. |
+| `LAGER_SMTP_URL` | none | Turns on mail, which verifies the email addresses users add: `smtps://user:password@host`, or `smtp://user:password@host:587?tls=required` for STARTTLS. Needs `LAGER_DOMAIN`. Without it, users get only the addresses their GitHub account verified. See [decision 30](docs/decisions/0030-email-verification.md). |
+| `LAGER_MAIL_FROM` | required with `LAGER_SMTP_URL` | The sender, such as `Lager <git@example.com>`. |
 
 Every server is plain HTTP behind a load balancer that terminates HTTPS
 and spreads requests over the servers. Any server can answer any request;

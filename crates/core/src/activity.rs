@@ -188,7 +188,10 @@ impl ActivityDb {
                  SELECT day, count(DISTINCT oid) AS n
                  FROM lager_activity_commits
                  WHERE repository = ANY($2)
-                   AND email IN (SELECT email FROM lager_user_emails WHERE user_name = $1)
+                   AND email IN (
+                       SELECT email FROM lager_user_emails
+                       WHERE user_name = $1 AND verified IS NOT NULL
+                   )
                    AND day >= current_date - $3::int
                  GROUP BY day
                  UNION ALL

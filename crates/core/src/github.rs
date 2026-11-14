@@ -235,7 +235,7 @@ impl GithubDb {
             .execute(&self.pool)
             .await
             .map_err(unavailable)?;
-        sqlx::query("DELETE FROM lager_user_emails WHERE user_name = $1 AND github")
+        sqlx::query("DELETE FROM lager_user_emails WHERE user_name = $1 AND verified = 'github'")
             .bind(user)
             .execute(&self.pool)
             .await
@@ -244,13 +244,15 @@ impl GithubDb {
     }
 
     /// Replaces the user's email addresses that GitHub verified, in lower
-    /// case (docs/decisions/0029-activity-graph.md). An address the user
-    /// added by hand becomes GitHub's; one GitHub no longer lists goes.
+    /// case (docs/decisions/0029-activity-graph.md). An unverified address
+    /// the user added by hand becomes GitHub's; one GitHub no longer lists
+    /// goes. An address that another user verified stays theirs
+    /// (docs/decisions/0030-email-verification.md).
     pub async fn set_emails(&self, user: &str, emails: &[String]) -> Result<(), GithubDbError> {
         let mut tx = self.pool.begin().await.map_err(unavailable)?;
         sqlx::query(
             "DELETE FROM lager_user_emails
-             WHERE user_name = $1 AND github AND NOT email = ANY($2)",
+             WHERE user_name = $1 AND verified = 'github' AND NOT email = ANY($2)",
         )
         .bind(user)
         .bind(emails)
@@ -258,10 +260,16 @@ impl GithubDb {
         .await
         .map_err(unavailable)?;
         sqlx::query(
-            "INSERT INTO lager_user_emails (user_name, email, github)
-             SELECT $1, e, true FROM unnest($2::text[]) AS e
+            "INSERT INTO lager_user_emails (user_name, email, verified, verified_at)
+             SELECT $1, e, 'github', now() FROM unnest($2::text[]) AS e
              WHERE EXISTS (SELECT 1 FROM lager_users WHERE name = $1)
-             ON CONFLICT (user_name, email) DO UPDATE SET github = true",
+               AND NOT EXISTS (
+                   SELECT 1 FROM lager_user_emails o
+                   WHERE o.email = e AND o.user_name <> $1 AND o.verified IS NOT NULL
+               )
+             ON CONFLICT (user_name, email) DO UPDATE
+             SET verified = 'github', verified_at = now(), token_hash = NULL, token_expires_at = NULL
+             WHERE lager_user_emails.verified IS NULL",
         )
         .bind(user)
         .bind(emails)

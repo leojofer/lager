@@ -42,7 +42,8 @@ option needs a deployment that cannot work without choosing it.
   local clone address is then the SSH listen address.
 - A section turns on with its main variable: `LAGER_SESSION_SECRET` for the
   web interface, `LAGER_NATS_URL` for the bus, `LAGER_GITHUB_CLIENT_ID` and
-  `_SECRET` for mirrors, `LAGER_SSH_HOST_KEY` for SSH. Listen addresses have
+  `_SECRET` for mirrors, `LAGER_SSH_HOST_KEY` for SSH, `LAGER_SMTP_URL` for
+  mail (decision 30). Listen addresses have
   defaults (`0.0.0.0:8080`, `0.0.0.0:2222`).
 - `LAGER_SSH_HOST_KEY` holds the key itself, several lines in double
   quotes.
