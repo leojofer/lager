@@ -418,7 +418,15 @@ export interface GithubMirror {
 export interface GithubStatus {
   /** False without LAGER_GITHUB_CLIENT_ID on the server. */
   configured: boolean
-  account: { login: string } | null
+  account: {
+    login: string
+    /** New repositories the user owns on GitHub become mirrors. */
+    auto: boolean
+    /** Why the last check for new repositories failed. */
+    auto_error: string | null
+    /** The repositories the last check to skip any skipped, and why. */
+    auto_skipped: string | null
+  } | null
   /** The GitHub account that signs the user in (decision 31). */
   sign_in: { login: string } | null
   mirrors: GithubMirror[]
@@ -455,7 +463,10 @@ export function useGithubRepos(enabled: boolean) {
   })
 }
 
-/** `github_mirror`, `github_unmirror`, `github_disconnect`, or `github_unlink`. */
+/**
+ * `github_mirror`, `github_unmirror`, `github_auto`, `github_disconnect`, or
+ * `github_unlink`.
+ */
 export function useGithubChange() {
   const qc = useQueryClient()
   return useMutation({

@@ -97,6 +97,13 @@ pub const GITHUB_FETCH_TIMEOUT: Duration = Duration::from_secs(1500);
 /// (docs/decisions/0029-activity-graph.md).
 pub const GITHUB_CONTRIBUTIONS_TTL: Duration = Duration::from_secs(3600);
 pub const GITHUB_CONTRIBUTIONS_TIMEOUT: Duration = Duration::from_secs(10);
+/// An account that syncs new repositories looks for them this often, also
+/// after a failure; other servers skip it for the lease while one looks
+/// (docs/decisions/0033-sync-new-github-repositories.md).
+pub const GITHUB_AUTO_INTERVAL: Duration = Duration::from_secs(300);
+pub const GITHUB_AUTO_LEASE: Duration = Duration::from_secs(600);
+/// How often each server looks for accounts that are due.
+pub const GITHUB_AUTO_POLL_INTERVAL: Duration = Duration::from_secs(10);
 /// Email verification (docs/decisions/0032-email-verification.md): a link
 /// works this long; mail to one address waits this long between sends and
 /// stops after a number a day, whoever asks; one user sends a number a day

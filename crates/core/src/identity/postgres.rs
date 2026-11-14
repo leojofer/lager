@@ -313,6 +313,19 @@ CREATE TABLE lager_email_mails (
 CREATE INDEX lager_email_mails_email ON lager_email_mails (email, sent_at);
 CREATE INDEX lager_email_mails_user ON lager_email_mails (user_name, sent_at);
 "#,
+    // Syncing new GitHub repositories
+    // (docs/decisions/0033-sync-new-github-repositories.md).
+    r#"
+ALTER TABLE lager_github_accounts ADD COLUMN auto boolean NOT NULL DEFAULT false;
+-- GitHub's `created_at` of the newest repository seen; newer ones are new.
+ALTER TABLE lager_github_accounts ADD COLUMN auto_since text;
+-- A server that starts a check moves this ahead by a lease.
+ALTER TABLE lager_github_accounts ADD COLUMN auto_next_at timestamptz NOT NULL DEFAULT now();
+-- Why the last check failed.
+ALTER TABLE lager_github_accounts ADD COLUMN auto_error text;
+-- The repositories that the last check to skip any skipped, and why.
+ALTER TABLE lager_github_accounts ADD COLUMN auto_skipped text;
+"#,
 ];
 
 /// SSH keys a user can have at the same time.

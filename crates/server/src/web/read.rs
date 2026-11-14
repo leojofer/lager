@@ -164,6 +164,10 @@ pub enum Query {
         name: String,
     },
     GithubDisconnect,
+    /// Turns syncing new GitHub repositories on or off.
+    GithubAuto {
+        on: bool,
+    },
     /// Stops the user's GitHub account from signing in
     /// (docs/decisions/0031-github-sign-in.md).
     GithubUnlink,
@@ -299,6 +303,7 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::GithubMirror { .. }
         | Query::GithubUnmirror { .. }
         | Query::GithubDisconnect
+        | Query::GithubAuto { .. }
         | Query::GithubUnlink => return super::github::run(s, who, q).await,
         Query::RepoCreate { name, public } => return create(s, who, name, *public).await,
         Query::RepoRename { .. } | Query::RepoVisibility { .. } | Query::RepoDelete { .. } => {
@@ -342,6 +347,7 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::GithubMirror { .. }
         | Query::GithubUnmirror { .. }
         | Query::GithubDisconnect
+        | Query::GithubAuto { .. }
         | Query::GithubUnlink
         | Query::RepoCreate { .. }
         | Query::RepoRename { .. }

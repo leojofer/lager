@@ -504,6 +504,10 @@ pub async fn run(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadEr
             github.unmirror(who, &name).await?;
             Ok(json!({}))
         }
+        Query::GithubAuto { on } => {
+            github.set_auto(who, on).await?;
+            Ok(json!({}))
+        }
         Query::GithubDisconnect => {
             github.disconnect(who).await?;
             Ok(json!({}))
