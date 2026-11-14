@@ -165,7 +165,7 @@ pub enum Query {
     },
     GithubDisconnect,
     /// Stops the user's GitHub account from signing in
-    /// (docs/decisions/0030-github-sign-in.md).
+    /// (docs/decisions/0031-github-sign-in.md).
     GithubUnlink,
 }
 

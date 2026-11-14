@@ -419,7 +419,7 @@ export interface GithubStatus {
   /** False without LAGER_GITHUB_CLIENT_ID on the server. */
   configured: boolean
   account: { login: string } | null
-  /** The GitHub account that signs the user in (decision 30). */
+  /** The GitHub account that signs the user in (decision 31). */
   sign_in: { login: string } | null
   mirrors: GithubMirror[]
 }

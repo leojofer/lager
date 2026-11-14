@@ -7,8 +7,7 @@ import {
 
 import { useLive } from "@/lib/api"
 import { cn } from "@/lib/utils"
-import { buttonVariants } from "@/components/ui/button"
-import { Separator } from "@/components/ui/separator"
+import { Crumbs, PageBody, PageHeader, PageTitle } from "@/components/frame"
 
 export const Route = createFileRoute("/-/settings")({ component: Settings })
 
@@ -34,51 +33,72 @@ const GROUPS = [
 function Settings() {
   const state = useLive()
   const pathname = useLocation({ select: (l) => l.pathname })
-  if (!state?.ready) return <p>Connecting…</p>
-  if (!state.user)
-    return (
-      <p>
-        <Link to="/-/sign-in" search={{ next: pathname }} className="underline">
-          Sign in
-        </Link>{" "}
-        to change your settings.
-      </p>
-    )
+  const section = GROUPS.flatMap(
+    (g): readonly { to: string; title: string }[] => g.sections
+  ).find((s) => s.to === pathname)
   return (
-    <div className="w-full">
-      <h1 className="text-2xl font-semibold tracking-tight">Settings</h1>
-      <Separator className="my-6" />
-      <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
-        <aside className="-mx-1 lg:w-48 lg:shrink-0">
-          <nav className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-4">
-            {GROUPS.map((g) => (
-              <div key={g.title} className="flex gap-1 lg:flex-col">
-                <h2 className="hidden px-2.5 py-1 text-xs font-medium text-muted-foreground lg:block">
-                  {g.title}
-                </h2>
-                {g.sections.map((s) => (
-                  <Link
-                    key={s.to}
-                    to={s.to}
-                    className={cn(
-                      buttonVariants({ variant: "ghost" }),
-                      "justify-start",
-                      pathname === s.to
-                        ? "bg-muted hover:bg-muted"
-                        : "hover:bg-transparent hover:underline"
-                    )}
-                  >
-                    {s.title}
-                  </Link>
-                ))}
+    <>
+      <PageHeader>
+        <Crumbs
+          items={[
+            { label: "Settings" },
+            ...(section ? [{ label: section.title }] : []),
+          ]}
+        />
+      </PageHeader>
+      <PageBody>
+        {!state?.ready ? (
+          <p className="text-sm text-muted-foreground">Connecting…</p>
+        ) : !state.user ? (
+          <p className="text-sm">
+            <Link
+              to="/-/sign-in"
+              search={{ next: pathname }}
+              className="font-medium text-primary hover:underline"
+            >
+              Sign in
+            </Link>{" "}
+            to change your settings.
+          </p>
+        ) : (
+          <div className="grid gap-8">
+            <PageTitle>Settings</PageTitle>
+            <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
+              <aside className="lg:w-48 lg:shrink-0">
+                <nav className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-5">
+                  {GROUPS.map((g) => (
+                    <div
+                      key={g.title}
+                      className="flex gap-1 lg:flex-col lg:gap-px"
+                    >
+                      <h2 className="hidden px-2.5 pb-1.5 label-caps lg:block">
+                        {g.title}
+                      </h2>
+                      {g.sections.map((s) => (
+                        <Link
+                          key={s.to}
+                          to={s.to}
+                          className={cn(
+                            "flex h-7.5 shrink-0 items-center rounded-md px-2.5 text-[13px] font-medium whitespace-nowrap",
+                            pathname === s.to
+                              ? "bg-tint text-ink"
+                              : "text-body hover:bg-muted"
+                          )}
+                        >
+                          {s.title}
+                        </Link>
+                      ))}
+                    </div>
+                  ))}
+                </nav>
+              </aside>
+              <div className="min-w-0 flex-1 lg:max-w-2xl">
+                <Outlet />
               </div>
-            ))}
-          </nav>
-        </aside>
-        <div className="min-w-0 flex-1 lg:max-w-2xl">
-          <Outlet />
-        </div>
-      </div>
-    </div>
+            </div>
+          </div>
+        )}
+      </PageBody>
+    </>
   )
 }

@@ -1,81 +1,83 @@
 import { Link } from "@tanstack/react-router"
 import { FileDown, History } from "lucide-react"
 
-import type { Refs } from "@/lib/api"
+import { useBlob, useTree } from "@/lib/api"
 import { href, rawHref } from "@/lib/paths"
 import { Button } from "@/components/ui/button"
 import { BlobView } from "./blob"
+import { CommitLine } from "./commit-line"
 import { FileTree } from "./file-tree"
-import { PathCrumbs } from "./path-crumbs"
-import { RevPicker } from "./rev-picker"
 import { SidePanelLayout } from "./side-panel"
 import { TreeView } from "./tree"
 
 /**
  * The code of a revision: the file tree beside the directory or file the
- * address names. On phones the tree opens in a sheet.
+ * address names, under the commit that last changed it. On phones the tree
+ * opens in a sheet.
  */
 export function CodeView({
   repo,
   rev,
   path,
-  refs,
   view,
 }: {
   repo: string
   rev: string
   path: string
-  refs: Refs
   view: "tree" | "blob"
 }) {
-  const preview =
-    view === "blob" ? (
-      <BlobView repo={repo} rev={rev} path={path} />
-    ) : (
-      <TreeView repo={repo} rev={rev} path={path} />
-    )
-  const tree = (onNavigate?: () => void) => (
-    <FileTree repo={repo} rev={rev} path={path} onNavigate={onNavigate} />
-  )
+  // The same queries as the views below; they share the answers.
+  const tree = useTree(repo, rev, view === "tree" ? path : "")
+  const blob = useBlob(repo, rev, path, view === "blob")
+  const last = view === "blob" ? blob.data?.last_commit : tree.data?.last_commit
 
   return (
     <SidePanelLayout
       id="lager-code"
       title="Files"
-      side={tree}
+      side={(onNavigate) => (
+        <FileTree repo={repo} rev={rev} path={path} onNavigate={onNavigate} />
+      )}
       toolbar={
         <>
-          <RevPicker
-            repo={repo}
-            view={view}
-            rev={rev}
-            path={path}
-            refs={refs}
-          />
-          <PathCrumbs repo={repo} rev={rev} path={path} />
-          <div className="ml-auto flex gap-1">
+          <CommitLine repo={repo} commit={last} />
+          <div className="flex shrink-0 gap-0.5">
             {view === "blob" && (
-              <Button asChild variant="ghost" size="sm">
-                <a href={rawHref(repo, rev, path)}>
+              <Button
+                asChild
+                variant="ghost"
+                size="icon-sm"
+                className="text-muted-foreground"
+              >
+                <a href={rawHref(repo, rev, path)} title="Raw" aria-label="Raw">
                   <FileDown />
-                  Raw
                 </a>
               </Button>
             )}
-            <Button asChild variant="ghost" size="sm">
+            <Button
+              asChild
+              variant="ghost"
+              size="icon-sm"
+              className="text-muted-foreground"
+            >
               <Link
                 to="/$"
                 params={{ _splat: href(repo, "commits", rev, path) }}
+                title="History"
+                aria-label="History"
               >
                 <History />
-                History
               </Link>
             </Button>
           </div>
         </>
       }
     >
-      {preview}
+      {view === "blob" ? (
+        <BlobView repo={repo} rev={rev} path={path} />
+      ) : (
+        <TreeView repo={repo} rev={rev} path={path} />
+      )}
     </SidePanelLayout>
   )
 }

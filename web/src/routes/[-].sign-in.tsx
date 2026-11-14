@@ -19,6 +19,7 @@ import {
   CardTitle,
 } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
+import { Crumbs, PageHeader } from "@/components/frame"
 import { Label } from "@/components/ui/label"
 
 export const Route = createFileRoute("/-/sign-in")({
@@ -87,72 +88,77 @@ function SignIn() {
   }
 
   return (
-    <div className="flex justify-center py-16">
-      <Card className="w-full max-w-sm">
-        <CardHeader>
-          <CardTitle>Sign in</CardTitle>
-          <CardDescription>
-            Use your password or a registered passkey.
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={submit} className="grid gap-4">
-            {error && (
-              <Alert variant="destructive">
-                <AlertDescription>{error}</AlertDescription>
-              </Alert>
-            )}
-            {passkeySupported && (
-              <Button
-                type="button"
-                variant="default"
-                disabled={busy}
-                onClick={passkey}
-              >
-                Sign in with a passkey
+    <>
+      <PageHeader>
+        <Crumbs items={[{ label: "Sign in" }]} />
+      </PageHeader>
+      <div className="flex justify-center px-4 py-16">
+        <Card className="w-full max-w-sm">
+          <CardHeader>
+            <CardTitle>Sign in</CardTitle>
+            <CardDescription>
+              Use your password or a registered passkey.
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={submit} className="grid gap-4">
+              {error && (
+                <Alert variant="destructive">
+                  <AlertDescription>{error}</AlertDescription>
+                </Alert>
+              )}
+              {passkeySupported && (
+                <Button
+                  type="button"
+                  variant="default"
+                  disabled={busy}
+                  onClick={passkey}
+                >
+                  Sign in with a passkey
+                </Button>
+              )}
+              {signUp.data?.github && (
+                <Button type="button" variant="outline" disabled={busy} asChild>
+                  <a href={githubSignInHref(destination())}>
+                    <GithubMark />
+                    Sign in with GitHub
+                  </a>
+                </Button>
+              )}
+              {(passkeySupported || signUp.data?.github) && (
+                <p className="text-center text-sm text-muted-foreground">
+                  Or sign in with your password
+                </p>
+              )}
+              <div className="grid gap-2">
+                <Label htmlFor="user">User name</Label>
+                <Input id="user" name="user" autoComplete="username" required />
+              </div>
+              <div className="grid gap-2">
+                <Label htmlFor="password">Password</Label>
+                <Input
+                  id="password"
+                  name="password"
+                  type="password"
+                  autoComplete="current-password"
+                  required
+                />
+              </div>
+              <Button type="submit" variant="outline" disabled={busy}>
+                {busy ? "Signing in…" : "Sign in"}
               </Button>
-            )}
-            {signUp.data?.github && (
-              <Button type="button" variant="outline" disabled={busy} asChild>
-                <a href={githubSignInHref(destination())}>
-                  <GithubMark />
-                  Sign in with GitHub
-                </a>
-              </Button>
-            )}
-            {(passkeySupported || signUp.data?.github) && (
-              <p className="text-center text-sm text-muted-foreground">
-                Or sign in with your password
+            </form>
+            {signUp.data?.enabled && (
+              <p className="mt-4 text-center text-sm text-muted-foreground">
+                No account yet?{" "}
+                <Link to="/-/sign-up" className="underline">
+                  Sign up
+                </Link>
               </p>
             )}
-            <div className="grid gap-2">
-              <Label htmlFor="user">User name</Label>
-              <Input id="user" name="user" autoComplete="username" required />
-            </div>
-            <div className="grid gap-2">
-              <Label htmlFor="password">Password</Label>
-              <Input
-                id="password"
-                name="password"
-                type="password"
-                autoComplete="current-password"
-                required
-              />
-            </div>
-            <Button type="submit" variant="outline" disabled={busy}>
-              {busy ? "Signing in…" : "Sign in"}
-            </Button>
-          </form>
-          {signUp.data?.enabled && (
-            <p className="mt-4 text-center text-sm text-muted-foreground">
-              No account yet?{" "}
-              <Link to="/-/sign-up" className="underline">
-                Sign up
-              </Link>
-            </p>
-          )}
-        </CardContent>
-      </Card>
-    </div>
+          </CardContent>
+        </Card>
+      </div>
+    </>
   )
 }

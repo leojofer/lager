@@ -28,9 +28,9 @@ import {
 import { ModKey } from "@/components/omnibar"
 
 /**
- * A resizable side panel of files beside the main view, shown and hidden
- * with a button at the start of the toolbar or Mod+\. On phones the panel
- * opens in a sheet.
+ * A resizable side panel of files beside the main view, edge to edge below
+ * the page header, shown and hidden with a button at the start of the
+ * toolbar or Mod+\. On phones the panel opens in a sheet.
  */
 export function SidePanelLayout({
   id,
@@ -74,78 +74,81 @@ export function SidePanelLayout({
     return () => document.removeEventListener("keydown", down)
   }, [])
 
-  return (
-    <div className="grid grid-cols-1 gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button
-              variant="ghost"
-              size="icon-sm"
-              onClick={toggle}
-              aria-label={`Show or hide ${title.toLowerCase()}`}
-            >
-              <PanelLeft />
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>
-            {title}{" "}
-            <KbdGroup>
-              <Kbd>
-                <ModKey />
-              </Kbd>
-              <Kbd>\</Kbd>
-            </KbdGroup>
-          </TooltipContent>
-        </Tooltip>
-        {toolbar}
-      </div>
-      {mobile ? (
-        <>
-          {children}
-          <Sheet open={sheet} onOpenChange={setSheet}>
-            <SheetContent side="left" className="w-72 gap-0 p-0">
-              <SheetHeader className="border-b">
-                <SheetTitle>{title}</SheetTitle>
-              </SheetHeader>
-              <div className="overflow-y-auto px-2">
-                {side(() => setSheet(false))}
-              </div>
-            </SheetContent>
-          </Sheet>
-        </>
-      ) : (
-        // Both sides scroll on their own, so the panel stays in view. The
-        // group sets its own height to 100%, so the wrapper sizes it.
-        <div className="h-[calc(100svh-12.5rem)] min-h-96">
-          <ResizablePanelGroup
-            id={id}
-            defaultLayout={layout.defaultLayout}
-            onLayoutChanged={layout.onLayoutChanged}
+  const bar = (
+    <div className="flex h-11 shrink-0 items-center gap-3 border-b border-hairline px-3 md:px-4">
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <Button
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            onClick={toggle}
+            aria-label={`Show or hide ${title.toLowerCase()}`}
           >
-            <ResizablePanel
-              id="files"
-              panelRef={panel}
-              onResize={(size) => setCollapsed(size.inPixels === 0)}
-              collapsible
-              defaultSize={280}
-              minSize={180}
-              maxSize="40"
-              className="pr-2"
-            >
-              {side()}
-            </ResizablePanel>
-            <ResizableHandle className={cn(collapsed && "bg-transparent")} />
-            <ResizablePanel
-              id="preview"
-              minSize="40"
-              className={cn(!collapsed && "pl-4")}
-            >
-              {children}
-            </ResizablePanel>
-          </ResizablePanelGroup>
-        </div>
-      )}
+            <PanelLeft />
+          </Button>
+        </TooltipTrigger>
+        <TooltipContent>
+          {title}{" "}
+          <KbdGroup>
+            <Kbd>
+              <ModKey />
+            </Kbd>
+            <Kbd>\</Kbd>
+          </KbdGroup>
+        </TooltipContent>
+      </Tooltip>
+      {toolbar}
+    </div>
+  )
+
+  if (mobile) {
+    return (
+      <>
+        {bar}
+        {children}
+        <Sheet open={sheet} onOpenChange={setSheet}>
+          <SheetContent side="left" className="w-72 gap-0 p-0">
+            <SheetHeader className="border-b">
+              <SheetTitle>{title}</SheetTitle>
+            </SheetHeader>
+            <div className="overflow-y-auto px-2">
+              {side(() => setSheet(false))}
+            </div>
+          </SheetContent>
+        </Sheet>
+      </>
+    )
+  }
+  // Edge to edge below the page header; both sides scroll on their own, so
+  // the panel stays in view. The group sets its own height to 100%, so the
+  // wrapper sizes it.
+  return (
+    <div className="h-[calc(100svh-3rem)] min-h-96">
+      <ResizablePanelGroup
+        id={id}
+        defaultLayout={layout.defaultLayout}
+        onLayoutChanged={layout.onLayoutChanged}
+      >
+        <ResizablePanel
+          id="files"
+          panelRef={panel}
+          onResize={(size) => setCollapsed(size.inPixels === 0)}
+          collapsible
+          defaultSize={248}
+          minSize={180}
+          maxSize="40"
+        >
+          <div className="h-full overflow-y-auto px-2.5 py-2">{side()}</div>
+        </ResizablePanel>
+        <ResizableHandle className={cn(collapsed && "bg-transparent")} />
+        <ResizablePanel id="preview" minSize="40">
+          <div className="flex h-full flex-col">
+            {bar}
+            <div className="min-h-0 flex-1 overflow-y-auto">{children}</div>
+          </div>
+        </ResizablePanel>
+      </ResizablePanelGroup>
     </div>
   )
 }

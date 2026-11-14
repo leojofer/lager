@@ -24,7 +24,7 @@ async fn offered(State(s): State<AppState>) -> Response {
     Json(serde_json::json!({
         "enabled": web.is_some(),
         "passkey": web.is_some_and(|w| w.public_origin.is_some()),
-        // Sign-in with GitHub (docs/decisions/0030-github-sign-in.md), which
+        // Sign-in with GitHub (docs/decisions/0031-github-sign-in.md), which
         // creates accounts only with sign-up.
         "github": s.web.is_some() && s.github.is_some(),
     }))

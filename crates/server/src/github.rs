@@ -186,7 +186,7 @@ impl Github {
     }
 
     /// The GitHub page that asks the user to sign in here
-    /// (docs/decisions/0030-github-sign-in.md). No scope: the token reads
+    /// (docs/decisions/0031-github-sign-in.md). No scope: the token reads
     /// only public information, and is revoked once it named the account.
     pub fn sign_in_url(&self, state: &str, redirect: Option<&str>) -> String {
         self.authorize(None, state, redirect)

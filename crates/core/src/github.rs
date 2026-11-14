@@ -227,7 +227,7 @@ impl GithubDb {
         Ok(())
     }
 
-    // Sign-in with GitHub (docs/decisions/0030-github-sign-in.md).
+    // Sign-in with GitHub (docs/decisions/0031-github-sign-in.md).
 
     /// The user that the GitHub account `github_id` signs in, if any; keeps
     /// its current `login`.

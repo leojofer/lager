@@ -1,4 +1,4 @@
-# 30. Sign-in with GitHub
+# 31. Sign-in with GitHub
 
 Status: accepted; implemented in `crates/server/src/web/github.rs`,
 `crates/core/src/identity/passkeys.rs`, `crates/core/src/github.rs`, and

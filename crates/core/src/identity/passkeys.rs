@@ -538,7 +538,7 @@ impl PgUsers {
     }
 
     /// Creates an account without a password that the GitHub account
-    /// `github_id` signs in (docs/decisions/0030-github-sign-in.md); returns
+    /// `github_id` signs in (docs/decisions/0031-github-sign-in.md); returns
     /// its session stamp.
     pub async fn create_signed_up_with_github(
         &self,

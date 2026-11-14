@@ -227,7 +227,7 @@ where the container image installs it; without it, only the API under
   and with `LAGER_SIGN_UP` a GitHub account that is new here creates an
   account under a name the user picks. Sign-in asks GitHub for no access;
   **Settings → GitHub** links or unlinks the account. See
-  [decision 30](docs/decisions/0030-github-sign-in.md).
+  [decision 31](docs/decisions/0031-github-sign-in.md).
 - GitHub mirrors (`LAGER_GITHUB_CLIENT_ID`): **Settings** in the user menu has
   **Connect with GitHub**. Then pick GitHub repositories; each becomes
   `<user>/<name>` here and follows GitHub's branches, tags, and default

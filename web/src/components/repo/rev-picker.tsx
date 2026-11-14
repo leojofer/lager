@@ -39,7 +39,11 @@ export function RevPicker({
         navigate({ to: "/$", params: { _splat: href(repo, view, r, path) } })
       }
     >
-      <SelectTrigger size="sm" className="max-w-56 font-mono">
+      <SelectTrigger
+        size="sm"
+        aria-label="Branch or tag"
+        className="h-5.5! max-w-56 min-w-0 shrink gap-1.25 rounded-[5px] px-2 font-mono text-[11px] text-body shadow-none [&_svg]:size-3! [&_svg]:text-muted-foreground"
+      >
         <SelectValue />
       </SelectTrigger>
       <SelectContent>

@@ -8,7 +8,7 @@
 //!
 //! `GET /-/api/github/sign-in` signs in with GitHub instead, or links the
 //! GitHub account of a signed-in user, through the same callback
-//! (docs/decisions/0030-github-sign-in.md). A GitHub account that signs in
+//! (docs/decisions/0031-github-sign-in.md). A GitHub account that signs in
 //! nobody leads to `/-/sign-up/github`, which picks a user name and creates
 //! the account with `POST /-/api/github/sign-up`.
 //!
