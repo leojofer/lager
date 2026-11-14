@@ -1,5 +1,5 @@
 import { useQuery } from "@tanstack/react-query"
-import { Check, Copy, Download } from "lucide-react"
+import { Check, ChevronDown, Code, Copy, Download } from "lucide-react"
 import { useState } from "react"
 
 import { Button } from "@/components/ui/button"
@@ -67,15 +67,23 @@ export function CopyButton({ text }: { text: string }) {
   )
 }
 
-export function CloneButton({ repo }: { repo: string }) {
+/** Ink on a repository's overview; a hairline button beside other actions. */
+export function CloneButton({
+  repo,
+  variant = "ink",
+}: {
+  repo: string
+  variant?: "ink" | "outline"
+}) {
   const url = cloneUrl(repo)
   const ssh = useSshUrl()
   return (
     <DropdownMenu>
       <DropdownMenuTrigger asChild>
-        <Button size="sm">
-          <Download />
+        <Button size="sm" variant={variant}>
+          {variant === "ink" ? <Code /> : <Download />}
           Clone
+          {variant === "ink" && <ChevronDown className="opacity-60" />}
         </Button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-96 p-3">

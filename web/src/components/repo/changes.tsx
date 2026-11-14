@@ -1,12 +1,12 @@
 import type { FileDiffContentsLoader } from "@pierre/diffs"
 import { FileDiff as PatchFileDiff } from "@pierre/diffs/react"
 import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { createPortal } from "react-dom"
 
 import { fetchBlob } from "@/lib/api"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { codeOptions, codeStyle, parseDiff, type DiffFile } from "./diff"
 import { DiffTree } from "./diff-tree"
-import { SidePanelLayout } from "./side-panel"
 
 type DiffStyle = "unified" | "split"
 
@@ -24,7 +24,8 @@ function useDiffStyle() {
 /**
  * The files of a patch between two revisions, with a count of changed
  * lines. Expanding unchanged lines loads both whole files. With `tree`, a
- * tree of the files beside them leads to each.
+ * tree of the files, drawn into that element elsewhere on the page, leads
+ * to each.
  */
 export function ChangedFiles({
   repo,
@@ -43,8 +44,8 @@ export function ChangedFiles({
   newRev: string
   /** Appended to the summary. */
   note?: string
-  /** Keeps the tree's width across visits; absent for no tree. */
-  tree?: string
+  /** Where the tree of the files goes; absent for no tree. */
+  tree?: HTMLElement | null
 }) {
   const files = useMemo(() => parseDiff(diff), [diff])
   const [diffStyle, setDiffStyle] = useDiffStyle()
@@ -75,8 +76,8 @@ export function ChangedFiles({
     <>
       <p className="text-sm text-muted-foreground">
         {files.length} {files.length === 1 ? "file" : "files"} changed,{" "}
-        <span className="text-emerald-600">+{adds}</span>{" "}
-        <span className="text-red-600">−{dels}</span>
+        <span className="font-mono text-xs text-added">+{adds}</span>{" "}
+        <span className="font-mono text-xs text-removed">−{dels}</span>
         {note}
       </p>
       <Tabs
@@ -99,8 +100,8 @@ export function ChangedFiles({
           ref={(el) => {
             views.current[i] = el
           }}
-          // Below the sticky header on phones.
-          className="max-md:scroll-mt-14"
+          // Below the sticky page header.
+          className="scroll-mt-14"
         >
           <FileView
             file={f}
@@ -117,34 +118,24 @@ export function ChangedFiles({
     </div>
   )
 
-  if (!tree) {
-    return (
-      <div className="grid grid-cols-1 gap-6">
-        <div className="flex flex-wrap items-center gap-3">{summary}</div>
-        {diffs}
-      </div>
-    )
-  }
   return (
-    <SidePanelLayout
-      id={tree}
-      title="Changed files"
-      toolbar={summary}
-      side={(onNavigate) => (
-        <DiffTree
-          files={files}
-          current={current}
-          onSelect={(i) => {
-            onNavigate?.()
-            // The last files may not reach the top, so mark the choice.
-            setCurrent(i)
-            views.current[i]?.scrollIntoView({ block: "start" })
-          }}
-        />
-      )}
-    >
+    <div className="grid grid-cols-1 gap-6">
+      <div className="flex flex-wrap items-center gap-3">{summary}</div>
       {diffs}
-    </SidePanelLayout>
+      {tree &&
+        createPortal(
+          <DiffTree
+            files={files}
+            current={current}
+            onSelect={(i) => {
+              // The last files may not reach the top, so mark the choice.
+              setCurrent(i)
+              views.current[i]?.scrollIntoView({ block: "start" })
+            }}
+          />,
+          tree
+        )}
+    </div>
   )
 }
 
@@ -165,8 +156,8 @@ function useCurrentFile(
         }
         setCurrent(visible.size ? Math.min(...visible) : undefined)
       },
-      // Not under the sticky header on phones.
-      { rootMargin: "-64px 0px 0px 0px" }
+      // Not under the sticky page header.
+      { rootMargin: "-56px 0px 0px 0px" }
     )
     for (const el of views.current.slice(0, files.length)) {
       if (el) io.observe(el)
@@ -201,7 +192,7 @@ function FileView({
           ? `File mode changed from ${diff.prevMode} to ${diff.mode}.`
           : "No content changes."
   return (
-    <div className="overflow-hidden rounded-lg border">
+    <div className="overflow-hidden rounded-[9px] border">
       <PatchFileDiff fileDiff={diff} options={options} style={codeStyle} />
       {note && (
         <p className="border-t p-4 text-sm text-muted-foreground">{note}</p>

@@ -1,8 +1,8 @@
 import { Link } from "@tanstack/react-router"
 import { useEffect, useRef, useState } from "react"
 
-import { useLog, type Commit, type Refs } from "@/lib/api"
-import { ago, fullDate, short } from "@/lib/format"
+import { useLog, type Commit } from "@/lib/api"
+import { fullDate, short, since } from "@/lib/format"
 import { href } from "@/lib/paths"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -10,19 +10,17 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
 import { Avatar } from "./avatar"
 import { AuthorName } from "./author-name"
-import { PathCrumbs } from "./path-crumbs"
-import { RevPicker } from "./rev-picker"
+import { PageTitle, SectionHead, rowList } from "@/components/frame"
 
+/** The history of a revision, or of a path in it, grouped by day. */
 export function CommitList({
   repo,
   rev,
   path,
-  refs,
 }: {
   repo: string
   rev: string
   path: string
-  refs: Refs
 }) {
   const log = useLog(repo, rev, path)
   const commits = log.data?.pages.flatMap((p) => p.commits)
@@ -30,17 +28,8 @@ export function CommitList({
   const days = groupByDay(commits ?? [])
 
   return (
-    <div className="grid grid-cols-1 gap-4">
-      <div className="flex flex-wrap items-center gap-3">
-        <RevPicker
-          repo={repo}
-          view="commits"
-          rev={rev}
-          path={path}
-          refs={refs}
-        />
-        {path && <PathCrumbs repo={repo} rev={rev} path={path} />}
-      </div>
+    <div className="grid grid-cols-1 gap-8">
+      <PageTitle note={path || undefined}>Commits</PageTitle>
       {log.error ? (
         <QueryError error={log.error} />
       ) : !commits ? (
@@ -48,45 +37,48 @@ export function CommitList({
       ) : commits.length === 0 ? (
         <p className="text-sm text-muted-foreground">No commits.</p>
       ) : (
-        <div className="grid grid-cols-1 gap-6">
+        <div className="grid grid-cols-1 gap-8">
           {days.map(([day, list]) => (
-            <section key={day} className="grid grid-cols-1 gap-2">
-              <h2 className="text-sm text-muted-foreground">
-                Commits on {day}
-              </h2>
-              <ul className="divide-y rounded-lg border">
+            <section key={day}>
+              <SectionHead title={day} count={list.length} />
+              <ul className={rowList}>
                 {list.map((c) => (
                   <li
                     key={c.oid}
                     className={cn(
-                      "flex items-center gap-3 px-4 py-3 transition-colors duration-1000",
-                      fresh.has(c.oid) && "animate-in bg-emerald-500/10 fade-in"
+                      "flex h-11 items-center gap-3 px-1 transition-colors duration-1000",
+                      fresh.has(c.oid) && "animate-in bg-tint fade-in"
                     )}
                   >
-                    <Avatar name={c.author.name} />
-                    <div className="min-w-0 flex-1">
-                      <Link
-                        to="/$"
-                        params={{ _splat: href(repo, "commit", c.oid) }}
-                        className="block truncate font-medium hover:underline"
-                      >
-                        {c.subject}
-                      </Link>
-                      <p className="text-xs text-muted-foreground">
-                        <AuthorName author={c.author} /> committed{" "}
-                        <span title={fullDate(c.committer.time)}>
-                          {ago(c.committer.time)}
-                        </span>
-                      </p>
-                    </div>
                     <Link
                       to="/$"
                       params={{ _splat: href(repo, "tree", c.oid) }}
-                      className="rounded-md border px-2 py-1 font-mono text-xs hover:bg-muted"
+                      className="w-16 shrink-0 font-mono text-[11px] text-label hover:text-ink"
                       title="Browse files at this commit"
                     >
-                      {short(c.oid)}
+                      {short(c.oid).slice(0, 7)}
                     </Link>
+                    <Link
+                      to="/$"
+                      params={{ _splat: href(repo, "commit", c.oid) }}
+                      className="min-w-0 flex-1 truncate text-[13px] text-body hover:text-ink"
+                    >
+                      {c.subject}
+                    </Link>
+                    <Avatar
+                      name={c.author.name}
+                      className="size-4.5 text-[8px]"
+                    />
+                    <AuthorName
+                      author={c.author}
+                      className="hidden w-28 shrink-0 truncate text-xs text-muted-foreground sm:inline"
+                    />
+                    <span
+                      className="w-7 shrink-0 text-right text-xs text-label"
+                      title={fullDate(c.committer.time)}
+                    >
+                      {since(c.committer.time)}
+                    </span>
                   </li>
                 ))}
               </ul>
@@ -95,6 +87,7 @@ export function CommitList({
           {log.hasNextPage && (
             <Button
               variant="outline"
+              size="sm"
               className="justify-self-center"
               disabled={log.isFetchingNextPage}
               onClick={() => log.fetchNextPage()}

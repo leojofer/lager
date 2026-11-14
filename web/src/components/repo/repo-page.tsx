@@ -1,33 +1,39 @@
 import { Link } from "@tanstack/react-router"
-import {
-  BookMarked,
-  GitPullRequest,
-  LayoutDashboard,
-  Settings,
-} from "lucide-react"
+import { Plus } from "lucide-react"
 
-import { useLive, usePullCounts, useRefs, useWatch } from "@/lib/api"
-import { href, splitRev, type Location, type View } from "@/lib/paths"
-import { cn } from "@/lib/utils"
+import { useLive, useRefs, useWatch, type Refs } from "@/lib/api"
+import { short } from "@/lib/format"
+import { href, splitRev, type Location } from "@/lib/paths"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
-import { GithubMark } from "@/components/github-mark"
+import {
+  BranchChip,
+  Crumbs,
+  PageBody,
+  PageHeader,
+  type Crumb,
+} from "@/components/frame"
 import { CloneButton } from "./clone"
 import { CodeView } from "./code"
 import { CommitList } from "./commits"
 import { CommitView } from "./commit"
 import { BranchList } from "./refs"
 import { EmptyRepo } from "./empty"
-import { PullList } from "./pulls"
+import { newPullHref, PullList } from "./pulls"
 import { PullView } from "./pull"
 import { ComparePage } from "./compare"
 import { Overview } from "./overview"
 import { RepoSettings } from "./settings"
+import { RevPicker } from "./rev-picker"
 
+/**
+ * A page of a repository. Its sections are in the sidebar; the header
+ * names the page and holds at most two actions.
+ */
 export function RepoPage({ loc }: { loc: Location }) {
   useWatch(loc.repo)
   const refs = useRefs(loc.repo)
-  const pulls = usePullCounts(loc.repo)
   const names = refs.data && [
     ...refs.data.branches.map((b) => b.name),
     ...refs.data.tags.map((t) => t.name),
@@ -37,195 +43,172 @@ export function RepoPage({ loc }: { loc: Location }) {
   const empty = refs.data && refs.data.branches.length === 0
   // Only the owner changes the settings (the server checks it too).
   const owner = useLive()?.user === loc.repo.split("/")[0]
-  return (
-    <div className="grid w-full grid-cols-1 gap-6">
-      <div className="flex flex-wrap items-center gap-3">
-        <h1 className="flex min-w-0 items-center gap-2 text-xl break-all">
-          <BookMarked className="size-5 text-muted-foreground" />
-          <RepoName name={loc.repo} />
-        </h1>
-        {refs.data?.mirror && <MirrorNote github={refs.data.mirror} />}
-        <div className="ml-auto">
-          <CloneButton repo={loc.repo} />
-        </div>
-      </div>
-      <Tabs
-        loc={loc}
-        rev={
-          loc.view === "commit" ||
-          loc.view === "pulls" ||
-          loc.view === "pull" ||
-          loc.view === "compare" ||
-          loc.view === "settings"
-            ? ""
-            : split.rev
-        }
-        owner={owner}
-        counts={refs.data && { pulls: pulls.data?.open }}
-      />
-      {refs.error ? (
-        <QueryError error={refs.error} />
-      ) : !refs.data ? (
-        <div className="grid grid-cols-1 gap-2">
-          <Skeleton className="h-10" />
-          <Skeleton className="h-64" />
-        </div>
-      ) : loc.view === "settings" ? (
-        owner ? (
-          <RepoSettings repo={loc.repo} refs={refs.data} />
-        ) : (
-          <p className="text-sm text-muted-foreground">
-            Only {loc.repo.split("/")[0]} changes the settings of this
-            repository.
-          </p>
-        )
-      ) : loc.view === "branches" ? (
-        <BranchList repo={loc.repo} refs={refs.data} />
-      ) : loc.view === "pulls" ? (
-        <PullList
-          repo={loc.repo}
-          closed={loc.rest[0] === "closed"}
-          refs={refs.data}
-        />
-      ) : loc.view === "pull" ? (
-        <PullView repo={loc.repo} rest={loc.rest} />
-      ) : loc.view === "compare" ? (
-        <ComparePage repo={loc.repo} rest={loc.rest} refs={refs.data} />
-      ) : empty ? (
-        <EmptyRepo repo={loc.repo} mirror={refs.data.mirror} />
-      ) : loc.view === "overview" ? (
-        <Overview repo={loc.repo} refs={refs.data} />
-      ) : loc.view === "commit" ? (
-        <CommitView repo={loc.repo} rev={loc.rest.join("/")} />
-      ) : loc.view === "commits" ? (
-        <CommitList
-          repo={loc.repo}
-          rev={rev}
-          path={split.path}
-          refs={refs.data}
-        />
+  const code = loc.view === "tree" || loc.view === "blob"
+
+  const page = refs.error ? (
+    <PageBody>
+      <QueryError error={refs.error} />
+    </PageBody>
+  ) : !refs.data ? (
+    <PageBody className="grid grid-cols-1 gap-2">
+      <Skeleton className="h-24" />
+      <Skeleton className="h-64" />
+    </PageBody>
+  ) : loc.view === "settings" ? (
+    <PageBody>
+      {owner ? (
+        <RepoSettings repo={loc.repo} refs={refs.data} />
       ) : (
-        <CodeView
-          repo={loc.repo}
-          rev={rev}
-          path={split.path}
-          refs={refs.data}
-          view={loc.view === "blob" ? "blob" : "tree"}
-        />
+        <p className="text-sm text-muted-foreground">
+          Only {loc.repo.split("/")[0]} changes the settings of this repository.
+        </p>
       )}
-    </div>
+    </PageBody>
+  ) : loc.view === "branches" ? (
+    <PageBody>
+      <BranchList repo={loc.repo} refs={refs.data} />
+    </PageBody>
+  ) : loc.view === "pulls" ? (
+    <PageBody>
+      <PullList
+        repo={loc.repo}
+        closed={loc.rest[0] === "closed"}
+        refs={refs.data}
+      />
+    </PageBody>
+  ) : loc.view === "pull" ? (
+    <PullView repo={loc.repo} rest={loc.rest} />
+  ) : loc.view === "compare" ? (
+    <PageBody>
+      <ComparePage repo={loc.repo} rest={loc.rest} refs={refs.data} />
+    </PageBody>
+  ) : empty ? (
+    <PageBody>
+      <EmptyRepo repo={loc.repo} mirror={refs.data.mirror} />
+    </PageBody>
+  ) : loc.view === "overview" ? (
+    <Overview repo={loc.repo} refs={refs.data} />
+  ) : loc.view === "commit" ? (
+    <PageBody>
+      <CommitView repo={loc.repo} rev={loc.rest.join("/")} />
+    </PageBody>
+  ) : loc.view === "commits" ? (
+    <PageBody>
+      <CommitList repo={loc.repo} rev={rev} path={split.path} />
+    </PageBody>
+  ) : (
+    <CodeView
+      repo={loc.repo}
+      rev={rev}
+      path={split.path}
+      view={loc.view === "blob" ? "blob" : "tree"}
+    />
   )
-}
 
-/** The owner links to their profile, the rest to the repository. */
-function RepoName({ name }: { name: string }) {
-  const [owner, ...rest] = name.split("/")
   return (
-    <span>
-      <Link
-        to="/$"
-        params={{ _splat: owner }}
-        className="text-muted-foreground hover:text-foreground hover:underline"
+    <>
+      <PageHeader
+        actions={
+          refs.data && <HeaderActions loc={loc} refs={refs.data} code={code} />
+        }
       >
-        {owner}
-      </Link>
-      <span className="text-muted-foreground"> / </span>
-      <Link to="/$" params={{ _splat: href(name) }} className="hover:underline">
-        {rest.slice(0, -1).map((p) => (
-          <span key={p} className="text-muted-foreground">
-            {p} /{" "}
-          </span>
-        ))}
-        <span className="font-semibold">{rest[rest.length - 1]}</span>
-      </Link>
-    </span>
+        <Crumbs items={crumbs(loc, split.path, rev)} />
+        {refs.data &&
+          !empty &&
+          (code || loc.view === "commits" ? (
+            <RevPicker
+              repo={loc.repo}
+              view={loc.view}
+              rev={rev}
+              path={split.path}
+              refs={refs.data}
+            />
+          ) : (
+            loc.view === "overview" && (
+              <BranchChip name={refs.data.head} className="hidden sm:flex" />
+            )
+          ))}
+      </PageHeader>
+      {page}
+    </>
   )
 }
 
-/** A mirror of a GitHub repository. */
-function MirrorNote({ github }: { github: string }) {
-  return (
-    <a
-      href={`https://github.com/${github}`}
-      target="_blank"
-      rel="noreferrer"
-      title="Pushes go to GitHub first, and this copy follows"
-      className="flex items-center gap-1.5 rounded-full border px-2 py-0.5 text-xs text-muted-foreground hover:text-foreground"
-    >
-      <GithubMark className="size-3.5" />
-      Mirror of {github}
-    </a>
-  )
+/** owner / repo, then the page, then a path in the code. */
+function crumbs(loc: Location, path: string, rev: string): Crumb[] {
+  const [owner, ...rest] = loc.repo.split("/")
+  const out: Crumb[] = [
+    { label: owner, to: owner },
+    { label: rest.join("/"), to: href(loc.repo) },
+  ]
+  const page = (label: string, to?: string) => out.push({ label, to })
+  switch (loc.view) {
+    case "tree":
+    case "blob": {
+      const parts = path.split("/").filter(Boolean)
+      if (parts.length > 0) out[1].to = href(loc.repo, "tree", rev)
+      parts.forEach((p, i) =>
+        out.push({
+          label: p,
+          to: href(loc.repo, "tree", rev, parts.slice(0, i + 1).join("/")),
+        })
+      )
+      break
+    }
+    case "commits":
+      page("commits", href(loc.repo, "commits", rev))
+      if (path) page(path)
+      break
+    case "commit":
+      page("commits", href(loc.repo, "commits"))
+      out.push({ label: short(loc.rest.join("/")), mono: true })
+      break
+    case "branches":
+      page("branches")
+      break
+    case "pulls":
+      page("pull requests", href(loc.repo, "pulls"))
+      if (loc.rest[0] === "closed") page("closed")
+      break
+    case "pull":
+      page("pull requests", href(loc.repo, "pulls"))
+      page(`#${loc.rest[0] ?? ""}`)
+      break
+    case "compare":
+      page("compare")
+      break
+    case "settings":
+      page("settings")
+      break
+  }
+  return out
 }
 
-function Tabs({
+function HeaderActions({
   loc,
-  rev,
-  owner,
-  counts,
+  refs,
+  code,
 }: {
   loc: Location
-  rev: string
-  /** Only the owner sees the settings. */
-  owner: boolean
-  counts?: { pulls?: number }
+  refs: Refs
+  code: boolean
 }) {
-  const all: {
-    view: View
-    label: string
-    icon: typeof BookMarked
-    count?: number
-  }[] = [
-    { view: "overview", label: "Overview", icon: LayoutDashboard },
-    {
-      view: "pulls",
-      label: "Pull requests",
-      icon: GitPullRequest,
-      count: counts?.pulls,
-    },
-    { view: "tree", label: "Code", icon: BookMarked },
-    { view: "settings", label: "Settings", icon: Settings },
-  ]
-  const tabs = all.filter((t) => owner || t.view !== "settings")
-  // History and branches are reached from the overview and the code; they
-  // count as part of the code.
-  const active =
-    loc.view === "blob" ||
-    loc.view === "commits" ||
-    loc.view === "commit" ||
-    loc.view === "branches"
-      ? "tree"
-      : loc.view === "pull" || loc.view === "compare"
-        ? "pulls"
-        : loc.view
-  return (
-    <nav className="-mt-2 flex [scrollbar-width:none] gap-1 overflow-x-auto overflow-y-hidden border-b">
-      {tabs.map((t) => (
-        <Link
-          key={t.view}
-          to="/$"
-          params={{
-            _splat:
-              t.view === "overview"
-                ? href(loc.repo)
-                : href(loc.repo, t.view, t.view === "tree" ? rev : undefined),
-          }}
-          className={cn(
-            "-mb-px flex shrink-0 items-center gap-2 border-b-2 px-2.5 py-2 text-sm whitespace-nowrap sm:px-3",
-            active === t.view
-              ? "border-foreground font-medium"
-              : "border-transparent text-muted-foreground hover:text-foreground"
-          )}
-        >
-          <t.icon className="hidden size-4 sm:block" />
-          {t.label}
-          {t.count !== undefined && (
-            <span className="rounded-full bg-muted px-1.5 text-xs">
-              {t.count}
-            </span>
-          )}
-        </Link>
-      ))}
-    </nav>
+  const user = useLive()?.user
+  const newPull = user && refs.branches.length > 1 && (
+    <Button asChild size="sm">
+      <Link to="/$" params={{ _splat: newPullHref(loc.repo, refs) }}>
+        <Plus />
+        <span className="hidden sm:inline">New pull request</span>
+      </Link>
+    </Button>
   )
+  if (loc.view === "overview" || loc.view === "pulls") return newPull
+  if (code)
+    return (
+      <>
+        <CloneButton repo={loc.repo} variant="outline" />
+        {newPull}
+      </>
+    )
+  return null
 }
