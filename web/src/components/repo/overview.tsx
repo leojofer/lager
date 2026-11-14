@@ -50,7 +50,7 @@ export function Overview({ repo, refs }: { repo: string; refs: Refs }) {
     <div className="flex min-h-[calc(100svh-3rem)] flex-col">
       <Hero repo={repo} refs={refs} updated={activity.commits?.[0]} />
       <div className="grid shrink-0 grid-cols-2 border-y border-hairline lg:grid-cols-4">
-        <Stat label="Open pull requests">
+        <Stat label="Open pull requests" to={href(repo, "pulls")}>
           <Big>{counts?.open ?? "–"}</Big>
           {mine.length > 0 ? (
             <span className="text-xs font-medium text-tint-foreground">
@@ -62,14 +62,14 @@ export function Overview({ repo, refs }: { repo: string; refs: Refs }) {
             )
           )}
         </Stat>
-        <Stat label="Branches">
+        <Stat label="Branches" to={href(repo, "branches")}>
           <Big>{refs.branches.length}</Big>
           <span className="text-xs text-label">
             {refs.tags.length} {refs.tags.length === 1 ? "tag" : "tags"}
           </span>
         </Stat>
         <LatestTag repo={repo} refs={refs} />
-        <CommitStat activity={activity} />
+        <CommitStat repo={repo} rev={refs.head} activity={activity} />
       </div>
       <div className="flex flex-1 flex-col lg:flex-row">
         <div className="grid min-w-0 flex-1 grid-cols-1 content-start gap-8 px-4 py-7 md:px-10">
@@ -210,23 +210,38 @@ function Hero({
   )
 }
 
+/** A tile of the strip; with `to`, the whole tile links to that page. */
 function Stat({
   label,
   note,
+  to,
   children,
 }: {
   label: string
   note?: string
+  /** The splat of the page the tile opens. */
+  to?: string
   children: React.ReactNode
 }) {
-  return (
-    <div className="flex min-w-0 flex-col gap-2.5 border-hairline px-4 py-4.5 max-lg:odd:border-r md:px-6 lg:not-last:border-r lg:first:pl-10 lg:last:pr-10 max-lg:[&:nth-child(-n+2)]:border-b">
+  const className = cn(
+    "flex min-w-0 flex-col gap-2.5 border-hairline px-4 py-4.5 max-lg:odd:border-r md:px-6 lg:not-last:border-r lg:first:pl-10 lg:last:pr-10 max-lg:[&:nth-child(-n+2)]:border-b",
+    to && "transition-colors hover:bg-muted/50"
+  )
+  const body = (
+    <>
       <h2 className="truncate label-caps">
         {label}
         {note && <span className="font-normal text-label"> · {note}</span>}
       </h2>
       <div className="flex h-9 min-w-0 items-baseline gap-2">{children}</div>
-    </div>
+    </>
+  )
+  return to ? (
+    <Link to="/$" params={{ _splat: to }} className={className}>
+      {body}
+    </Link>
+  ) : (
+    <div className={className}>{body}</div>
   )
 }
 
@@ -267,8 +282,12 @@ function LatestTag({ repo, refs }: { repo: string; refs: Refs }) {
 
 /** Commits of the last DAYS days, with a bar for each day; today's is blue. */
 function CommitStat({
+  repo,
+  rev,
   activity,
 }: {
+  repo: string
+  rev: string
   activity: ReturnType<typeof useActivity>
 }) {
   const days = new Array<number>(DAYS).fill(0)
@@ -282,7 +301,7 @@ function CommitStat({
   }
   const max = Math.max(1, ...days)
   return (
-    <Stat label="Commits" note={`${DAYS} days`}>
+    <Stat label="Commits" note={`${DAYS} days`} to={href(repo, "commits", rev)}>
       <span className="flex w-full items-end gap-4 self-end">
         <Big>
           {activity.recent ? activity.recent.length : "–"}
