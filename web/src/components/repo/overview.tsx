@@ -15,6 +15,7 @@ import { fullDate, short, since } from "@/lib/format"
 import { href } from "@/lib/paths"
 import { cn } from "@/lib/utils"
 import { Badge } from "@/components/ui/badge"
+import { Button } from "@/components/ui/button"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
 import { GithubMark } from "@/components/github-mark"
@@ -181,18 +182,6 @@ function Hero({
               <GitBranch className="size-3 text-label" />
               <span className="font-mono text-[11px]">{refs.head}</span>
             </span>
-            {refs.mirror && (
-              <a
-                href={`https://github.com/${refs.mirror}`}
-                target="_blank"
-                rel="noreferrer"
-                title="Pushes go to GitHub first, and this copy follows"
-                className="flex items-center gap-1.5 hover:text-ink"
-              >
-                <GithubMark className="size-3 text-label" />
-                Mirror of {refs.mirror}
-              </a>
-            )}
             {updated && (
               <span
                 className="flex items-center gap-1.5"
@@ -205,7 +194,22 @@ function Hero({
           </div>
         </div>
       </div>
-      <CloneButton repo={repo} />
+      <div className="flex items-center gap-2">
+        {refs.mirror && (
+          <Button size="sm" variant="outline" asChild>
+            <a
+              href={`https://github.com/${refs.mirror}`}
+              target="_blank"
+              rel="noreferrer"
+              title={`Mirror of github.com/${refs.mirror}: pushes go to GitHub first, and this copy follows`}
+            >
+              <GithubMark />
+              GitHub
+            </a>
+          </Button>
+        )}
+        <CloneButton repo={repo} />
+      </div>
     </div>
   )
 }
