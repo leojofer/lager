@@ -93,7 +93,7 @@ function Emails() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <SettingsHeader
         title="Emails"
         description="Commits by verified emails count on your profile."

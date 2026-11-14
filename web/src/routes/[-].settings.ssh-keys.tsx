@@ -72,7 +72,7 @@ function SshKeys() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <SettingsHeader
         title="SSH keys"
         description="Public keys for Git over SSH. A key has your account’s access."

@@ -34,7 +34,7 @@ function Github() {
   const change = useGithubChange()
   const data = status.data
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <SettingsHeader
         title="GitHub"
         description="Mirror your GitHub repositories here. Pushes and pull request changes go to GitHub."

@@ -112,7 +112,7 @@ function Tokens() {
   }
 
   return (
-    <div className="grid gap-6">
+    <div className="grid grid-cols-1 gap-6">
       <SettingsHeader
         title="Access tokens"
         description="Credentials for Git clients, automation, and CI. Tokens can never have more access than your account."
@@ -145,7 +145,7 @@ function Tokens() {
         </p>
       )}
 
-      <section className="grid gap-2">
+      <section className="grid grid-cols-1 gap-2">
         <h3 className="text-sm font-medium">Your tokens</h3>
         {query.isPending ? (
           <Skeleton className="h-14" />
@@ -158,7 +158,7 @@ function Tokens() {
             {query.data?.tokens.map((token) => (
               <li key={token.id} className="flex items-start gap-3 px-3 py-2">
                 <Key className="mt-0.5 size-4 shrink-0 text-muted-foreground" />
-                <div className="grid min-w-0 gap-1">
+                <div className="grid min-w-0 grid-cols-1 gap-1">
                   <span className="text-sm font-medium break-words">
                     {token.name}
                   </span>
@@ -167,8 +167,14 @@ function Tokens() {
                       <Badge variant="secondary">Account access</Badge>
                     ) : (
                       Object.entries(token.access).map(([repo, level]) => (
-                        <Badge key={repo} variant="outline">
-                          {repo}: {level}
+                        <Badge
+                          key={repo}
+                          variant="outline"
+                          className="max-w-full"
+                        >
+                          <span className="truncate">
+                            {repo}: {level}
+                          </span>
                         </Badge>
                       ))
                     )}

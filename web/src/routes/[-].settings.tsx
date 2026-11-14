@@ -63,7 +63,7 @@ function Settings() {
             to change your settings.
           </p>
         ) : (
-          <div className="grid gap-8">
+          <div className="grid grid-cols-1 gap-8">
             <PageTitle>Settings</PageTitle>
             <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
               <aside className="lg:w-48 lg:shrink-0">
