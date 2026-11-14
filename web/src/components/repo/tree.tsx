@@ -6,7 +6,6 @@ import { bytes } from "@/lib/format"
 import { href } from "@/lib/paths"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
-import { CommitLine } from "./commit-line"
 import { isMarkdown, MarkdownView } from "./markdown"
 
 const icons = {
@@ -29,15 +28,14 @@ export function TreeView({
   const tree = useTree(repo, rev, path)
   const readme = tree.data && findReadme(tree.data.entries)
   return (
-    <div className="grid grid-cols-1 gap-4">
+    <div className="grid grid-cols-1 gap-8 px-4 py-4 md:px-6">
       {tree.error ? (
         <QueryError error={tree.error} />
       ) : !tree.data ? (
         <Skeleton className="h-72" />
       ) : (
-        <div className="rounded-lg border">
-          <CommitLine repo={repo} commit={tree.data.last_commit} />
-          <ul className="divide-y text-sm">
+        <div>
+          <ul className="text-[13px] [&>li+li]:border-t [&>li+li]:border-hairline">
             {path && (
               <li>
                 <Link
@@ -50,7 +48,7 @@ export function TreeView({
                       path.split("/").slice(0, -1).join("/")
                     ),
                   }}
-                  className="block px-4 py-2 text-muted-foreground hover:bg-muted/50"
+                  className="flex h-9 items-center px-2 text-muted-foreground hover:bg-muted/50"
                 >
                   ..
                 </Link>
@@ -61,7 +59,7 @@ export function TreeView({
             ))}
           </ul>
           {tree.data.truncated && (
-            <p className="border-t px-4 py-2 text-xs text-muted-foreground">
+            <p className="border-t border-hairline px-2 py-2 text-xs text-muted-foreground">
               Only the first {tree.data.entries.length} entries are shown.
             </p>
           )}
@@ -99,20 +97,28 @@ function Entry({
 }) {
   const Icon = icons[entry.kind]
   const name = (
-    <span className="flex items-center gap-3">
+    <span className="flex min-w-0 items-center gap-2.5">
       <Icon
         className={
           entry.kind === "tree"
-            ? "size-4 fill-sky-500/20 text-sky-600"
-            : "size-4 text-muted-foreground"
+            ? "size-4 shrink-0 fill-muted text-muted-foreground"
+            : "size-4 shrink-0 text-label"
         }
       />
-      <span className="truncate">{entry.name}</span>
+      <span
+        className={
+          entry.kind === "tree"
+            ? "truncate font-medium text-ink"
+            : "truncate text-body"
+        }
+      >
+        {entry.name}
+      </span>
     </span>
   )
   if (entry.kind === "submodule") {
     return (
-      <li className="flex items-center px-4 py-2">
+      <li className="flex h-9 items-center px-2">
         {name}
         <span className="ml-auto font-mono text-xs text-muted-foreground">
           @ {entry.oid.slice(0, 8)}
@@ -132,11 +138,11 @@ function Entry({
             join(dir, entry.name)
           ),
         }}
-        className="flex items-center px-4 py-2 hover:bg-muted/50"
+        className="flex h-9 items-center px-2 hover:bg-muted/50"
       >
         {name}
         {entry.size !== null && (
-          <span className="ml-auto text-xs text-muted-foreground">
+          <span className="ml-auto shrink-0 pl-3 font-mono text-[11px] text-label">
             {bytes(entry.size)}
           </span>
         )}
@@ -157,10 +163,10 @@ export function Readme({
   const blob = useBlob(repo, rev, path)
   if (!blob.data?.text) return null
   return (
-    <div className="rounded-lg border">
-      <div className="border-b px-4 py-2 text-sm font-medium">
+    <div>
+      <h2 className="border-b border-hairline pb-2 label-caps">
         {path.split("/").pop()}
-      </div>
+      </h2>
       {isMarkdown(path) ? (
         <MarkdownView repo={repo} rev={rev} path={path} text={blob.data.text} />
       ) : (

@@ -36,3 +36,21 @@ export function bytes(n: number) {
 export function short(oid: string) {
   return oid.slice(0, 8)
 }
+
+/** "2h", "3d", or "now" for a Unix time in seconds: for rows with little room. */
+export function since(unix: number) {
+  const secs = Math.max(0, Date.now() / 1000 - unix)
+  for (const [unit, size] of units) {
+    if (secs >= size) return `${Math.floor(secs / size)}${unitShort[unit]}`
+  }
+  return "now"
+}
+
+const unitShort: Partial<Record<Intl.RelativeTimeFormatUnit, string>> = {
+  year: "y",
+  month: "mo",
+  week: "w",
+  day: "d",
+  hour: "h",
+  minute: "m",
+}

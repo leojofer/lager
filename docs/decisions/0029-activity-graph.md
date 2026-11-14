@@ -30,10 +30,8 @@ from before this scope gets only the `noreply` ones until the user connects
 again.
 
 A user can also add addresses by hand in the settings (`/-/api/emails`),
-kept in lower case, at most 20. Nothing checks those: this server sends no
-mail. Claiming someone else's address only adds their commits to the
-claimer's count, and only commits in repositories the claimer can read, so
-it reveals nothing new.
+kept in lower case, at most 20. At first nothing checked those; since
+decision 32 they count only once a link sent by mail verified them.
 
 **Activity here.** After each change on a server, it reads the commits
 of the repository's default branch with `git rev-list` since the commit it

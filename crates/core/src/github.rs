@@ -15,7 +15,7 @@
 //!
 //! An account can sync new repositories: GitHub repositories the user owns
 //! that are created after the newest one seen become mirrors
-//! (docs/decisions/0030-sync-new-github-repositories.md).
+//! (docs/decisions/0033-sync-new-github-repositories.md).
 
 use std::time::Duration;
 
@@ -260,15 +260,76 @@ impl GithubDb {
         Ok(())
     }
 
+    // Sign-in with GitHub (docs/decisions/0031-github-sign-in.md).
+
+    /// The user that the GitHub account `github_id` signs in, if any; keeps
+    /// its current `login`.
+    pub async fn signs_in(
+        &self,
+        github_id: i64,
+        login: &str,
+    ) -> Result<Option<String>, GithubDbError> {
+        sqlx::query_scalar(
+            "UPDATE lager_github_logins SET login = $2 WHERE github_id = $1 RETURNING user_name",
+        )
+        .bind(github_id)
+        .bind(login)
+        .fetch_optional(&self.pool)
+        .await
+        .map_err(unavailable)
+    }
+
+    /// Lets the GitHub account sign the user in, unless either is linked
+    /// already. Answers whether the user is linked to this account now.
+    pub async fn link(
+        &self,
+        user: &str,
+        github_id: i64,
+        login: &str,
+    ) -> Result<bool, GithubDbError> {
+        sqlx::query(
+            "INSERT INTO lager_github_logins (github_id, user_name, login)
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        )
+        .bind(github_id)
+        .bind(user)
+        .bind(login)
+        .execute(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        Ok(self
+            .linked(user)
+            .await?
+            .is_some_and(|(id, _)| id == github_id))
+    }
+
+    /// Whether a connected account holds `token`.
+    pub async fn token_in_use(&self, token: &str) -> Result<bool, GithubDbError> {
+        sqlx::query_scalar("SELECT EXISTS (SELECT 1 FROM lager_github_accounts WHERE token = $1)")
+            .bind(token)
+            .fetch_one(&self.pool)
+            .await
+            .map_err(unavailable)
+    }
+
+    /// The GitHub ID and login of the account that signs the user in.
+    pub async fn linked(&self, user: &str) -> Result<Option<(i64, String)>, GithubDbError> {
+        sqlx::query_as("SELECT github_id, login FROM lager_github_logins WHERE user_name = $1")
+            .bind(user)
+            .fetch_optional(&self.pool)
+            .await
+            .map_err(unavailable)
+    }
+
     /// Forgets the account and the email addresses it verified. Its
-    /// mirrors stay and stop syncing.
+    /// mirrors stay and stop syncing. Sign-in with it stays.
     pub async fn disconnect(&self, user: &str) -> Result<(), GithubDbError> {
         sqlx::query("DELETE FROM lager_github_accounts WHERE user_name = $1")
             .bind(user)
             .execute(&self.pool)
             .await
             .map_err(unavailable)?;
-        sqlx::query("DELETE FROM lager_user_emails WHERE user_name = $1 AND github")
+        sqlx::query("DELETE FROM lager_user_emails WHERE user_name = $1 AND verified = 'github'")
             .bind(user)
             .execute(&self.pool)
             .await
@@ -277,13 +338,15 @@ impl GithubDb {
     }
 
     /// Replaces the user's email addresses that GitHub verified, in lower
-    /// case (docs/decisions/0029-activity-graph.md). An address the user
-    /// added by hand becomes GitHub's; one GitHub no longer lists goes.
+    /// case (docs/decisions/0029-activity-graph.md). An unverified address
+    /// the user added by hand becomes GitHub's; one GitHub no longer lists
+    /// goes. An address that another user verified stays theirs
+    /// (docs/decisions/0032-email-verification.md).
     pub async fn set_emails(&self, user: &str, emails: &[String]) -> Result<(), GithubDbError> {
         let mut tx = self.pool.begin().await.map_err(unavailable)?;
         sqlx::query(
             "DELETE FROM lager_user_emails
-             WHERE user_name = $1 AND github AND NOT email = ANY($2)",
+             WHERE user_name = $1 AND verified = 'github' AND NOT email = ANY($2)",
         )
         .bind(user)
         .bind(emails)
@@ -291,10 +354,16 @@ impl GithubDb {
         .await
         .map_err(unavailable)?;
         sqlx::query(
-            "INSERT INTO lager_user_emails (user_name, email, github)
-             SELECT $1, e, true FROM unnest($2::text[]) AS e
+            "INSERT INTO lager_user_emails (user_name, email, verified, verified_at)
+             SELECT $1, e, 'github', now() FROM unnest($2::text[]) AS e
              WHERE EXISTS (SELECT 1 FROM lager_users WHERE name = $1)
-             ON CONFLICT (user_name, email) DO UPDATE SET github = true",
+               AND NOT EXISTS (
+                   SELECT 1 FROM lager_user_emails o
+                   WHERE o.email = e AND o.user_name <> $1 AND o.verified IS NOT NULL
+               )
+             ON CONFLICT (user_name, email) DO UPDATE
+             SET verified = 'github', verified_at = now(), token_hash = NULL, token_expires_at = NULL
+             WHERE lager_user_emails.verified IS NULL",
         )
         .bind(user)
         .bind(emails)

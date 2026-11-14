@@ -3,6 +3,7 @@ import { useState } from "react"
 import { AlertCircle, Lock, RefreshCw, Search } from "lucide-react"
 
 import {
+  githubSignInHref,
   useGithub,
   useGithubChange,
   useGithubRepos,
@@ -120,6 +121,40 @@ function Github() {
                   </span>
                 )}
               </label>
+            )}
+          </div>
+        </section>
+      )}
+      {data?.configured && (
+        <section className="grid gap-2">
+          <h3 className="text-sm font-medium">Sign-in</h3>
+          <div className="flex flex-wrap items-center gap-3 rounded-md border px-3 py-2">
+            <GithubMark className="size-5 shrink-0" />
+            {data.sign_in ? (
+              <>
+                <span className="text-sm">
+                  Signs in as{" "}
+                  <span className="font-medium">@{data.sign_in.login}</span>
+                </span>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="ml-auto"
+                  disabled={change.isPending}
+                  onClick={() => change.mutate({ op: "github_unlink" })}
+                >
+                  Unlink
+                </Button>
+              </>
+            ) : (
+              <>
+                <span className="text-sm text-muted-foreground">
+                  Not linked.
+                </span>
+                <Button variant="outline" size="sm" className="ml-auto" asChild>
+                  <a href={githubSignInHref("/-/settings/github")}>Link</a>
+                </Button>
+              </>
             )}
           </div>
         </section>

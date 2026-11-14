@@ -22,7 +22,11 @@ use super::{
     TOKEN_PREFIX, Token, TokenId, User, UserChange, UserError, VerifiedHashes, password_stamp,
 };
 use crate::config::DatabaseConfig;
-use crate::limits::{DATABASE_CONNECTIONS, DATABASE_TIMEOUT};
+use crate::limits::{
+    DATABASE_CONNECTIONS, DATABASE_TIMEOUT, EMAIL_MAILS_PER_ADDRESS_PER_DAY,
+    EMAIL_MAILS_PER_USER_PER_DAY, EMAIL_RESEND_INTERVAL, EMAIL_TOKEN_TTL,
+    EMAIL_UNVERIFIED_PER_USER,
+};
 use crate::repo::Access;
 
 /// Schema changes, applied in order and recorded in `lager_schema`.
@@ -264,8 +268,53 @@ CREATE TABLE lager_github_contributions (
 );
 ALTER TABLE lager_github_accounts ADD COLUMN contributions_at timestamptz;
 "#,
+    // Sign-in with GitHub (docs/decisions/0031-github-sign-in.md): at most
+    // one GitHub account per user and one user per GitHub account. Apart
+    // from the accounts connected for mirrors, which need a token; connected
+    // accounts are linked, the latest one where two users connected the same.
+    r#"
+CREATE TABLE lager_github_logins (
+    github_id bigint PRIMARY KEY,
+    user_name text NOT NULL UNIQUE REFERENCES lager_users (name) ON DELETE CASCADE,
+    -- GitHub's login when last seen; for display only.
+    login text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO lager_github_logins (github_id, user_name, login)
+SELECT DISTINCT ON (github_id) github_id, user_name, login
+FROM lager_github_accounts
+ORDER BY github_id, created_at DESC;
+"#,
+    // Email verification (docs/decisions/0032-email-verification.md): how
+    // an address was verified, at most one user per verified address, the
+    // link that verifies one by mail, and the mails sent, for their limits.
+    // Of two users with the same address from GitHub, the first keeps it.
+    r#"
+ALTER TABLE lager_user_emails
+    ADD COLUMN verified text CHECK (verified IN ('github', 'mail')),
+    ADD COLUMN verified_at timestamptz,
+    -- SHA-256 of the link's token.
+    ADD COLUMN token_hash bytea UNIQUE,
+    ADD COLUMN token_expires_at timestamptz;
+UPDATE lager_user_emails e SET verified = 'github', verified_at = e.created_at
+WHERE e.github AND NOT EXISTS (
+    SELECT 1 FROM lager_user_emails o
+    WHERE o.email = e.email AND o.github
+      AND (o.created_at, o.user_name) < (e.created_at, e.user_name)
+);
+ALTER TABLE lager_user_emails DROP COLUMN github;
+CREATE UNIQUE INDEX lager_user_emails_verified ON lager_user_emails (email)
+    WHERE verified IS NOT NULL;
+CREATE TABLE lager_email_mails (
+    email text NOT NULL,
+    user_name text NOT NULL,
+    sent_at timestamptz NOT NULL DEFAULT now()
+);
+CREATE INDEX lager_email_mails_email ON lager_email_mails (email, sent_at);
+CREATE INDEX lager_email_mails_user ON lager_email_mails (user_name, sent_at);
+"#,
     // Syncing new GitHub repositories
-    // (docs/decisions/0030-sync-new-github-repositories.md).
+    // (docs/decisions/0033-sync-new-github-repositories.md).
     r#"
 ALTER TABLE lager_github_accounts ADD COLUMN auto boolean NOT NULL DEFAULT false;
 -- GitHub's `created_at` of the newest repository seen; newer ones are new.
@@ -854,11 +903,11 @@ impl PgUsers {
         Ok(())
     }
 
-    /// A user's email addresses, in lower case, sorted, and whether GitHub
-    /// verified each.
-    pub async fn emails(&self, user: &str) -> Result<Vec<(String, bool)>, UserError> {
+    /// A user's email addresses, in lower case, sorted, with how each was
+    /// verified, if it was: `github` or `mail`.
+    pub async fn emails(&self, user: &str) -> Result<Vec<(String, Option<String>)>, UserError> {
         sqlx::query_as(
-            "SELECT email, github FROM lager_user_emails WHERE user_name = $1 ORDER BY email",
+            "SELECT email, verified FROM lager_user_emails WHERE user_name = $1 ORDER BY email",
         )
         .bind(user)
         .fetch_all(&self.pool)
@@ -866,21 +915,30 @@ impl PgUsers {
         .map_err(unavailable)
     }
 
-    /// Adds an email address from [`normalize_email`](super::normalize_email).
-    /// Adding one twice changes nothing.
+    /// Adds an unverified email address from
+    /// [`normalize_email`](super::normalize_email); [`email_token`](Self::email_token)
+    /// verifies it. Adding one twice changes nothing.
     pub async fn add_email(&self, user: &str, email: &str) -> Result<(), UserError> {
         let mut conn = self.conn().await?;
         let mut tx = conn.begin().await.map_err(unavailable)?;
-        let count: i64 = sqlx::query_scalar(
-            "SELECT count(*) FROM lager_user_emails WHERE user_name = $1 AND NOT github",
+        let (count, unverified): (i64, i64) = sqlx::query_as(
+            "SELECT count(*) FILTER (WHERE verified IS DISTINCT FROM 'github'),
+                    count(*) FILTER (WHERE verified IS NULL)
+             FROM lager_user_emails WHERE user_name = $1 AND email <> $2",
         )
         .bind(user)
+        .bind(email)
         .fetch_one(&mut *tx)
         .await
         .map_err(unavailable)?;
         if count >= MAX_EMAILS {
             return Err(UserError::Invalid(format!(
                 "a user can have at most {MAX_EMAILS} email addresses; delete one first"
+            )));
+        }
+        if unverified >= EMAIL_UNVERIFIED_PER_USER {
+            return Err(UserError::Invalid(format!(
+                "verify or delete your {unverified} unverified addresses first"
             )));
         }
         let added = sqlx::query(
@@ -909,29 +967,145 @@ impl PgUsers {
     }
 
     /// The users that commits by these author emails link to, as (email in
-    /// lower case, user) pairs: the one user whose GitHub account verified
-    /// the address, or else the only user who has it. An address that
-    /// several users claim and no single GitHub account verified links to
-    /// no one.
+    /// lower case, user) pairs: the user who verified the address, by
+    /// GitHub or by mail. Unverified addresses link to no one.
     pub async fn owners(&self, emails: &[String]) -> Result<Vec<(String, String)>, UserError> {
         if emails.is_empty() {
             return Ok(Vec::new());
         }
         let emails: Vec<String> = emails.iter().map(|e| e.to_lowercase()).collect();
         sqlx::query_as(
-            "SELECT email,
-                    CASE WHEN count(*) FILTER (WHERE github) = 1
-                         THEN min(user_name) FILTER (WHERE github)
-                         ELSE min(user_name) END
-             FROM lager_user_emails
-             WHERE email = ANY($1)
-             GROUP BY email
-             HAVING count(*) FILTER (WHERE github) = 1 OR count(*) = 1",
+            "SELECT email, user_name FROM lager_user_emails
+             WHERE email = ANY($1) AND verified IS NOT NULL",
         )
         .bind(&emails)
         .fetch_all(&self.pool)
         .await
         .map_err(unavailable)
+    }
+
+    /// A new link token for the user's unverified address, to send by mail
+    /// (docs/decisions/0032-email-verification.md). Only the latest one
+    /// works. Counts as a mail sent, within the limits on mails to the
+    /// address, whoever asks, and on mails the user asks for.
+    pub async fn email_token(&self, user: &str, email: &str) -> Result<String, UserError> {
+        let mut conn = self.conn().await?;
+        let mut tx = conn.begin().await.map_err(unavailable)?;
+        // One sender per address at a time, so the limits hold.
+        sqlx::query("SELECT pg_advisory_xact_lock(hashtext('lager_email_mails:' || $1))")
+            .bind(email)
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        let verified: Option<Option<String>> = sqlx::query_scalar(
+            "SELECT verified FROM lager_user_emails WHERE user_name = $1 AND email = $2",
+        )
+        .bind(user)
+        .bind(email)
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        match verified {
+            None => return Err(UserError::Invalid("add the address first".into())),
+            Some(Some(_)) => return Err(UserError::Invalid("the address is verified".into())),
+            Some(None) => {}
+        }
+        sqlx::query("DELETE FROM lager_email_mails WHERE sent_at < now() - interval '1 day'")
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        let (to_address, recent, by_user): (i64, bool, i64) = sqlx::query_as(
+            "SELECT count(*) FILTER (WHERE email = $1),
+                    coalesce(bool_or(email = $1 AND sent_at > now() - $3::float8 * interval '1 second'), false),
+                    count(*) FILTER (WHERE user_name = $2)
+             FROM lager_email_mails WHERE email = $1 OR user_name = $2",
+        )
+        .bind(email)
+        .bind(user)
+        .bind(EMAIL_RESEND_INTERVAL.as_secs_f64())
+        .fetch_one(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        if recent {
+            return Err(UserError::Invalid(
+                "a mail went to this address a moment ago; wait a minute".into(),
+            ));
+        }
+        if to_address >= EMAIL_MAILS_PER_ADDRESS_PER_DAY || by_user >= EMAIL_MAILS_PER_USER_PER_DAY
+        {
+            return Err(UserError::Invalid(
+                "too many verification mails today; try again tomorrow".into(),
+            ));
+        }
+        let token = URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>());
+        sqlx::query(
+            "UPDATE lager_user_emails
+             SET token_hash = $3, token_expires_at = now() + $4::float8 * interval '1 second'
+             WHERE user_name = $1 AND email = $2",
+        )
+        .bind(user)
+        .bind(email)
+        .bind(Sha256::digest(token.as_bytes()).to_vec())
+        .bind(EMAIL_TOKEN_TTL.as_secs_f64())
+        .execute(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        sqlx::query("INSERT INTO lager_email_mails (email, user_name) VALUES ($1, $2)")
+            .bind(email)
+            .bind(user)
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(token)
+    }
+
+    /// Verifies the address of a link's token for the user who added it,
+    /// and answers the address. Whoever had it verified before loses it:
+    /// the mailbox answered for this user now.
+    pub async fn verify_email(&self, user: &str, token: &str) -> Result<String, UserError> {
+        let mut conn = self.conn().await?;
+        let mut tx = conn.begin().await.map_err(unavailable)?;
+        let row: Option<(String, String)> = sqlx::query_as(
+            "SELECT user_name, email FROM lager_user_emails
+             WHERE token_hash = $1 AND token_expires_at > now()
+             FOR UPDATE",
+        )
+        .bind(Sha256::digest(token.as_bytes()).to_vec())
+        .fetch_optional(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        let Some((owner, email)) = row else {
+            return Err(UserError::Invalid(
+                "this link is old or was replaced by a newer one; send a new one".into(),
+            ));
+        };
+        if owner != user {
+            return Err(UserError::Invalid(format!(
+                "this link verifies an address for {owner}; sign in as {owner} to use it"
+            )));
+        }
+        sqlx::query(
+            "UPDATE lager_user_emails SET verified = NULL, verified_at = NULL
+             WHERE email = $1 AND user_name <> $2 AND verified IS NOT NULL",
+        )
+        .bind(&email)
+        .bind(user)
+        .execute(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        sqlx::query(
+            "UPDATE lager_user_emails
+             SET verified = 'mail', verified_at = now(), token_hash = NULL, token_expires_at = NULL
+             WHERE user_name = $1 AND email = $2",
+        )
+        .bind(user)
+        .bind(&email)
+        .execute(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(email)
     }
 
     /// `false`: the user has no such address. Addresses that GitHub
@@ -940,12 +1114,13 @@ impl PgUsers {
         let github: Option<bool> = sqlx::query_scalar(
             "WITH d AS (
                  DELETE FROM lager_user_emails
-                 WHERE user_name = $1 AND email = $2 AND NOT github
+                 WHERE user_name = $1 AND email = $2 AND verified IS DISTINCT FROM 'github'
                  RETURNING false AS github
              )
              SELECT github FROM d
              UNION ALL
-             SELECT true FROM lager_user_emails WHERE user_name = $1 AND email = $2 AND github",
+             SELECT true FROM lager_user_emails
+             WHERE user_name = $1 AND email = $2 AND verified = 'github'",
         )
         .bind(user)
         .bind(email)

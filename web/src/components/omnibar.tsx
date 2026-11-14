@@ -53,11 +53,17 @@ import { Separator } from "@/components/ui/separator"
 import { Kbd, KbdGroup } from "@/components/ui/kbd"
 import { cloneUrl } from "@/components/repo/clone"
 import { PullIcon, newPullHref } from "@/components/repo/pulls"
+import { LagerMark } from "@/components/lager-mark"
+
+/** The repository page shown, if any. */
+export function useCurrentLocation() {
+  const { _splat } = useParams({ strict: false })
+  return _splat ? parse(_splat) : null
+}
 
 /** The repository of the current page, if any. */
 export function useCurrentRepo() {
-  const { _splat } = useParams({ strict: false })
-  return _splat ? parse(_splat)?.repo : undefined
+  return useCurrentLocation()?.repo
 }
 
 /** ⌘ on Apple keyboards, Ctrl elsewhere. */
@@ -152,7 +158,7 @@ export function Omnibar({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogPortal>
-        <DialogPrimitive.Content className="fixed top-[15%] left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 rounded-xl bg-popover bg-clip-padding p-2 pb-11 text-popover-foreground shadow-2xl ring-4 ring-neutral-200/80 duration-100 outline-none sm:max-w-xl dark:bg-neutral-900 dark:ring-neutral-800 data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
+        <DialogPrimitive.Content className="fixed top-[12%] left-1/2 z-50 grid w-full max-w-[calc(100%-2rem)] -translate-x-1/2 overflow-hidden rounded-[18px] bg-popover/95 pb-11 text-popover-foreground shadow-[0_0_0_1px_var(--border),0_24px_64px_-12px_#00000040] backdrop-blur-xl duration-100 outline-none sm:max-w-[760px] data-open:animate-in data-open:fade-in-0 data-open:zoom-in-95 data-closed:animate-out data-closed:fade-out-0 data-closed:zoom-out-95">
           <DialogHeader className="sr-only">
             <DialogTitle>Search</DialogTitle>
             <DialogDescription>
@@ -165,15 +171,15 @@ export function Omnibar({
             onValueChange={setSelected}
             className="rounded-none! bg-transparent p-0"
           >
-            <div className="flex h-9 items-center gap-2 rounded-md border border-input bg-input/50 px-3">
-              <SearchIcon className="size-4 shrink-0 opacity-50" />
+            <div className="flex h-15 items-center gap-3 border-b border-hairline px-5">
+              <SearchIcon className="size-5 shrink-0 text-label" />
               {scope && (
                 <button
                   type="button"
                   tabIndex={-1}
                   onMouseDown={(e) => e.preventDefault()}
                   onClick={() => setScoped(false)}
-                  className="group/scope flex h-6 shrink-0 items-center gap-1 rounded-md border bg-background pr-1 pl-2 text-xs font-medium text-foreground shadow-xs hover:bg-accent dark:bg-input/60 dark:hover:bg-input"
+                  className="group/scope flex h-7 shrink-0 items-center gap-1 rounded-lg bg-muted pr-1.5 pl-2.5 text-[13px] font-medium text-ink hover:bg-accent"
                   aria-label={`Search everywhere instead of ${scope}`}
                 >
                   {scope}
@@ -203,10 +209,10 @@ export function Omnibar({
                 placeholder={
                   scope ? "Search this repository…" : "Search or jump to…"
                 }
-                className="h-full w-full min-w-0 flex-1 bg-transparent text-sm outline-hidden placeholder:text-muted-foreground"
+                className="h-full w-full min-w-0 flex-1 bg-transparent text-[17px] text-ink outline-hidden placeholder:text-label"
               />
             </div>
-            <CommandList className="max-h-80 min-h-80 scroll-pt-2 scroll-pb-1.5">
+            <CommandList className="max-h-[min(440px,60svh)] min-h-[min(440px,60svh)] scroll-pt-2 scroll-pb-1.5 px-2 pb-2">
               <CommandEmpty className="py-12 text-muted-foreground">
                 No results found.
               </CommandEmpty>
@@ -218,7 +224,10 @@ export function Omnibar({
               </HintsContext>
             </CommandList>
           </Command>
-          <div className="absolute inset-x-0 bottom-0 z-20 flex h-10 items-center gap-2 rounded-b-xl border-t border-t-neutral-100 bg-neutral-50 px-4 text-xs font-medium text-muted-foreground dark:border-t-neutral-700 dark:bg-neutral-800">
+          <div className="absolute inset-x-0 bottom-0 z-20 flex h-11 items-center justify-end gap-3 border-t border-hairline bg-muted/60 px-4 text-xs font-medium text-muted-foreground">
+            <span className="mr-auto flex items-center gap-2 text-ink">
+              <LagerMark className="size-4" />
+            </span>
             {hint && (
               <div className="flex items-center gap-2">
                 <MenuKbd>
@@ -262,7 +271,7 @@ function MenuKbd({ className, ...props }: React.ComponentProps<"kbd">) {
   return (
     <kbd
       className={cn(
-        "pointer-events-none flex h-5 min-w-5 items-center justify-center gap-1 rounded border bg-background px-1 font-sans text-[0.7rem] font-medium text-muted-foreground select-none [&_svg:not([class*='size-'])]:size-3",
+        "pointer-events-none flex h-5.5 min-w-5.5 items-center justify-center gap-1 rounded-md bg-background px-1.5 font-sans text-[0.7rem] font-medium text-muted-foreground shadow-[0_0_0_1px_var(--border)] select-none [&_svg:not([class*='size-'])]:size-3",
         className
       )}
       {...props}
@@ -277,7 +286,7 @@ function MenuGroup({
   return (
     <CommandGroup
       className={cn(
-        "p-0! **:[[cmdk-group-heading]]:scroll-mt-16 **:[[cmdk-group-heading]]:p-3! **:[[cmdk-group-heading]]:pb-1!",
+        "p-0! **:[[cmdk-group-heading]]:scroll-mt-16 **:[[cmdk-group-heading]]:px-3! **:[[cmdk-group-heading]]:pt-3.5! **:[[cmdk-group-heading]]:pb-1.5! **:[[cmdk-group-heading]]:text-xs **:[[cmdk-group-heading]]:font-medium **:[[cmdk-group-heading]]:text-label",
         className
       )}
       {...props}
@@ -294,7 +303,7 @@ function MenuItem({
   return (
     <CommandItem
       className={cn(
-        "h-9 rounded-md border border-transparent px-3! font-medium data-selected:border-input data-selected:bg-input/50",
+        "h-11 gap-3! rounded-[10px] px-3! text-sm font-medium text-ink data-selected:bg-ink/[0.06] dark:data-selected:bg-white/[0.08] [&_svg:not([class*='size-'])]:size-[18px]",
         className
       )}
       {...props}

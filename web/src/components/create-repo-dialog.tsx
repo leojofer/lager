@@ -96,7 +96,7 @@ export function CreateRepoDialog({
     <Dialog open={open} onOpenChange={close}>
       {trigger && (
         <DialogTrigger asChild>
-          <Button>
+          <Button size="sm">
             <Plus />
             New repository
           </Button>
@@ -145,7 +145,7 @@ export function CreateRepoDialog({
                   Couldn’t check availability.
                 </p>
               ) : (
-                <p className="text-xs text-emerald-600">
+                <p className="text-xs text-added">
                   Repository name is available.
                 </p>
               ))}

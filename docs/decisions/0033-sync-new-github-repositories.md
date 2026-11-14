@@ -1,4 +1,4 @@
-# 30. Syncing new GitHub repositories
+# 33. Syncing new GitHub repositories
 
 Status: accepted; implemented in `crates/core/src/github.rs`,
 `Github::check_new` in `crates/server/src/github.rs`, and
@@ -36,7 +36,7 @@ failure, such as GitHub not answering, the next check starts again from
 the last repository mirrored. A check that started before the user
 turned the switch off or on again records nothing.
 
-**Data.** PostgreSQL, schema version 10: `lager_github_accounts` gains
+**Data.** PostgreSQL, schema version 12: `lager_github_accounts` gains
 `auto`, `auto_since` (GitHub's `created_at` text), `auto_next_at`,
 `auto_error`, and `auto_skipped`. Connecting another GitHub account turns
 the switch off; connecting the same one again keeps it.
@@ -48,5 +48,5 @@ the switch off; connecting the same one again keeps it.
 - An account with the switch on costs one API call per five minutes.
 - **Stop syncing** or deleting a mirror that arrived this way does not
   bring it back: it is no longer new.
-- Servers before this decision do not know schema version 10; upgrade
+- Servers before this decision do not know schema version 12; upgrade
   every server first.

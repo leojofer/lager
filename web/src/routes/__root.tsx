@@ -14,7 +14,8 @@ import { queryClient } from "@/lib/api"
 import { live } from "@/lib/live"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
-import { AppSidebar, MobileHeader } from "@/components/app-sidebar"
+import { AppSidebar } from "@/components/app-sidebar"
+import { PageBody, PageHeader } from "@/components/frame"
 import { Omnibar } from "@/components/omnibar"
 import { CreateRepoDialog } from "@/components/create-repo-dialog"
 
@@ -68,12 +69,13 @@ function Root() {
       <TooltipProvider>
         {/* Always open on desktop; phones still open it as a sheet. */}
         <SidebarProvider open onOpenChange={() => {}}>
-          <AppSidebar onSearch={openSearch} />
-          <SidebarInset>
-            <MobileHeader onSearch={openSearch} />
-            <div className="w-full flex-1 px-4 py-6">
-              <Outlet />
-            </div>
+          <AppSidebar
+            onSearch={openSearch}
+            onCreateRepo={() => setCreateRepo(true)}
+          />
+          {/* Each page draws its own header above its content. */}
+          <SidebarInset className="min-w-0">
+            <Outlet />
           </SidebarInset>
           <Omnibar
             open={search}
@@ -93,14 +95,24 @@ function Root() {
 
 export function NotFound() {
   return (
-    <div className="py-24 text-center">
-      <h1 className="text-2xl font-semibold">Not found</h1>
-      <p className="mt-2 text-muted-foreground">
-        This page does not exist, or you cannot see it.
-      </p>
-      <Link to="/" className="mt-6 inline-block text-sm underline">
-        All repositories
-      </Link>
-    </div>
+    <>
+      <PageHeader>
+        <span className="text-[13px] font-medium text-ink">Not found</span>
+      </PageHeader>
+      <PageBody className="py-24 text-center">
+        <h1 className="font-display text-[34px] leading-9 text-ink">
+          Not found
+        </h1>
+        <p className="mt-2 text-sm text-muted-foreground">
+          This page does not exist, or you cannot see it.
+        </p>
+        <Link
+          to="/"
+          className="mt-6 inline-block text-sm font-medium text-primary hover:underline"
+        >
+          All repositories
+        </Link>
+      </PageBody>
+    </>
   )
 }

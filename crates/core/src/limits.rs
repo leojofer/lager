@@ -99,11 +99,21 @@ pub const GITHUB_CONTRIBUTIONS_TTL: Duration = Duration::from_secs(3600);
 pub const GITHUB_CONTRIBUTIONS_TIMEOUT: Duration = Duration::from_secs(10);
 /// An account that syncs new repositories looks for them this often, also
 /// after a failure; other servers skip it for the lease while one looks
-/// (docs/decisions/0030-sync-new-github-repositories.md).
+/// (docs/decisions/0033-sync-new-github-repositories.md).
 pub const GITHUB_AUTO_INTERVAL: Duration = Duration::from_secs(300);
 pub const GITHUB_AUTO_LEASE: Duration = Duration::from_secs(600);
 /// How often each server looks for accounts that are due.
 pub const GITHUB_AUTO_POLL_INTERVAL: Duration = Duration::from_secs(10);
+/// Email verification (docs/decisions/0032-email-verification.md): a link
+/// works this long; mail to one address waits this long between sends and
+/// stops after a number a day, whoever asks; one user sends a number a day
+/// and has a number of unverified addresses; sending waits this long.
+pub const EMAIL_TOKEN_TTL: Duration = Duration::from_secs(24 * 3600);
+pub const EMAIL_RESEND_INTERVAL: Duration = Duration::from_secs(60);
+pub const EMAIL_MAILS_PER_ADDRESS_PER_DAY: i64 = 5;
+pub const EMAIL_MAILS_PER_USER_PER_DAY: i64 = 20;
+pub const EMAIL_UNVERIFIED_PER_USER: i64 = 5;
+pub const EMAIL_SEND_TIMEOUT: Duration = Duration::from_secs(15);
 /// GitHub API pages of 100 that one mirror sync reads for pull requests
 /// and comments; a first import continues in the next syncs.
 pub const GITHUB_API_PAGES_PER_SYNC: u32 = 10;

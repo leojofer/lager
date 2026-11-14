@@ -20,6 +20,7 @@ import { Route as Char91Char93SettingsGithubRouteImport } from './routes/[-].set
 import { Route as Char91Char93SettingsPasskeysRouteImport } from './routes/[-].settings.passkeys'
 import { Route as Char91Char93SettingsSshKeysRouteImport } from './routes/[-].settings.ssh-keys'
 import { Route as Char91Char93SettingsTokensRouteImport } from './routes/[-].settings.tokens'
+import { Route as Char91Char93SignUpGithubRouteImport } from './routes/[-].sign-up_.github'
 
 const IndexRoute = IndexRouteImport.update({
   id: '/',
@@ -82,6 +83,12 @@ const Char91Char93SettingsTokensRoute =
     path: '/tokens',
     getParentRoute: () => Char91Char93SettingsRoute,
   } as any)
+const Char91Char93SignUpGithubRoute =
+  Char91Char93SignUpGithubRouteImport.update({
+    id: '/-/sign-up_/github',
+    path: '/-/sign-up/github',
+    getParentRoute: () => rootRouteImport,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof IndexRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/-/settings/passkeys': typeof Char91Char93SettingsPasskeysRoute
   '/-/settings/ssh-keys': typeof Char91Char93SettingsSshKeysRoute
   '/-/settings/tokens': typeof Char91Char93SettingsTokensRoute
+  '/-/sign-up/github': typeof Char91Char93SignUpGithubRoute
   '/-/settings/': typeof Char91Char93SettingsIndexRoute
 }
 export interface FileRoutesByTo {
@@ -106,6 +114,7 @@ export interface FileRoutesByTo {
   '/-/settings/passkeys': typeof Char91Char93SettingsPasskeysRoute
   '/-/settings/ssh-keys': typeof Char91Char93SettingsSshKeysRoute
   '/-/settings/tokens': typeof Char91Char93SettingsTokensRoute
+  '/-/sign-up/github': typeof Char91Char93SignUpGithubRoute
   '/-/settings': typeof Char91Char93SettingsIndexRoute
 }
 export interface FileRoutesById {
@@ -120,6 +129,7 @@ export interface FileRoutesById {
   '/-/settings/passkeys': typeof Char91Char93SettingsPasskeysRoute
   '/-/settings/ssh-keys': typeof Char91Char93SettingsSshKeysRoute
   '/-/settings/tokens': typeof Char91Char93SettingsTokensRoute
+  '/-/sign-up_/github': typeof Char91Char93SignUpGithubRoute
   '/-/settings/': typeof Char91Char93SettingsIndexRoute
 }
 export interface FileRouteTypes {
@@ -135,6 +145,7 @@ export interface FileRouteTypes {
     | '/-/settings/passkeys'
     | '/-/settings/ssh-keys'
     | '/-/settings/tokens'
+    | '/-/sign-up/github'
     | '/-/settings/'
   fileRoutesByTo: FileRoutesByTo
   to:
@@ -147,6 +158,7 @@ export interface FileRouteTypes {
     | '/-/settings/passkeys'
     | '/-/settings/ssh-keys'
     | '/-/settings/tokens'
+    | '/-/sign-up/github'
     | '/-/settings'
   id:
     | '__root__'
@@ -160,6 +172,7 @@ export interface FileRouteTypes {
     | '/-/settings/passkeys'
     | '/-/settings/ssh-keys'
     | '/-/settings/tokens'
+    | '/-/sign-up_/github'
     | '/-/settings/'
   fileRoutesById: FileRoutesById
 }
@@ -169,6 +182,7 @@ export interface RootRouteChildren {
   Char91Char93SettingsRoute: typeof Char91Char93SettingsRouteWithChildren
   Char91Char93SignInRoute: typeof Char91Char93SignInRoute
   Char91Char93SignUpRoute: typeof Char91Char93SignUpRoute
+  Char91Char93SignUpGithubRoute: typeof Char91Char93SignUpGithubRoute
 }
 
 declare module '@tanstack/react-router' {
@@ -250,6 +264,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof Char91Char93SettingsTokensRouteImport
       parentRoute: typeof Char91Char93SettingsRoute
     }
+    '/-/sign-up_/github': {
+      id: '/-/sign-up_/github'
+      path: '/-/sign-up/github'
+      fullPath: '/-/sign-up/github'
+      preLoaderRoute: typeof Char91Char93SignUpGithubRouteImport
+      parentRoute: typeof rootRouteImport
+    }
   }
 }
 
@@ -280,6 +301,7 @@ const rootRouteChildren: RootRouteChildren = {
   Char91Char93SettingsRoute: Char91Char93SettingsRouteWithChildren,
   Char91Char93SignInRoute: Char91Char93SignInRoute,
   Char91Char93SignUpRoute: Char91Char93SignUpRoute,
+  Char91Char93SignUpGithubRoute: Char91Char93SignUpGithubRoute,
 }
 export const routeTree = rootRouteImport
   ._addFileChildren(rootRouteChildren)
