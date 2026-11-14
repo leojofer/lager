@@ -11,7 +11,7 @@ export function SettingsHeader({
   return (
     <>
       <div className="grid gap-1">
-        <h2 className="text-lg font-medium">{title}</h2>
+        <h2 className="text-base font-semibold text-ink">{title}</h2>
         <p className="text-sm text-muted-foreground">{description}</p>
       </div>
       <Separator />

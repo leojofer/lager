@@ -9,6 +9,7 @@ import { QueryError } from "@/components/query-error"
 import { Avatar } from "./avatar"
 import { AuthorName } from "./author-name"
 import { ChangedFiles } from "./changes"
+import { SectionHead } from "@/components/frame"
 import { CopyButton } from "./clone"
 
 export function CommitView({ repo, rev }: { repo: string; rev: string }) {
@@ -19,18 +20,18 @@ export function CommitView({ repo, rev }: { repo: string; rev: string }) {
   const body = commit.message.split("\n").slice(1).join("\n").trim()
 
   return (
-    <div className="grid grid-cols-1 gap-6">
-      <div className="rounded-lg border">
-        <div className="p-4">
-          <h2 className="text-lg font-semibold">{commit.subject}</h2>
-          {body && (
-            <pre className="mt-3 font-mono text-sm whitespace-pre-wrap text-muted-foreground">
-              {body}
-            </pre>
-          )}
-        </div>
-        <div className="flex flex-wrap items-center gap-3 border-t bg-muted/40 px-4 py-2.5 text-sm">
-          <Avatar name={commit.author.name} />
+    <div className="grid grid-cols-1 gap-8">
+      <div className="grid gap-4">
+        <h1 className="font-display text-[30px] leading-9 break-words text-ink">
+          {commit.subject}
+        </h1>
+        {body && (
+          <pre className="font-mono text-[13px] whitespace-pre-wrap text-body">
+            {body}
+          </pre>
+        )}
+        <div className="flex flex-wrap items-center gap-3 border-y border-hairline py-2.5 text-[13px]">
+          <Avatar name={commit.author.name} className="size-5 text-[9px]" />
           <span>
             <AuthorName author={commit.author} className="font-medium" />{" "}
             <span className="text-muted-foreground">
@@ -59,7 +60,7 @@ export function CommitView({ repo, rev }: { repo: string; rev: string }) {
                 ))}
               </span>
             )}
-            <span className="text-foreground">{short(commit.oid)}</span>
+            <span className="text-ink">{short(commit.oid)}</span>
             <CopyButton text={commit.oid} />
             <Button asChild size="sm" variant="outline" className="font-sans">
               <Link to="/$" params={{ _splat: href(repo, "tree", commit.oid) }}>
@@ -70,6 +71,7 @@ export function CommitView({ repo, rev }: { repo: string; rev: string }) {
         </div>
       </div>
       {/* Merges show their changes against the first parent. */}
+      <SectionHead title="Files changed" className="-mb-6" />
       <ChangedFiles
         repo={repo}
         diff={diff}

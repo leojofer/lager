@@ -1,13 +1,6 @@
 import { useEffect, useRef, useState } from "react"
 import { Link } from "@tanstack/react-router"
-import {
-  ChevronRight,
-  File,
-  FileSymlink,
-  Folder,
-  FolderGit2,
-  FolderOpen,
-} from "lucide-react"
+import { ChevronRight, FileSymlink, FolderGit2 } from "lucide-react"
 
 import { useTree, type TreeEntry } from "@/lib/api"
 import { href } from "@/lib/paths"
@@ -42,7 +35,7 @@ export function FileTree({
       return n
     })
   return (
-    <nav aria-label="Files" className="py-2 text-sm">
+    <nav aria-label="Files" className="text-[13px]">
       <Directory
         tree={{ repo, rev, current: path, open, toggle, onNavigate }}
         dir=""
@@ -122,7 +115,7 @@ function Directory({
 }
 
 export const row =
-  "flex h-7 min-w-0 items-center gap-1.5 rounded-md pr-2 hover:bg-muted"
+  "flex h-7 min-w-0 items-center gap-1.5 rounded-md pr-2 text-body hover:bg-muted"
 
 function Node({
   tree,
@@ -150,7 +143,7 @@ function Node({
         title={`Submodule at ${entry.oid.slice(0, 8)}`}
       >
         <span className="size-4 shrink-0" />
-        <FolderGit2 className="size-4 shrink-0" />
+        <FolderGit2 className="size-3.5 shrink-0" />
         <span className="truncate">{entry.name}</span>
       </li>
     )
@@ -158,17 +151,15 @@ function Node({
 
   const isDir = entry.kind === "tree"
   const open = isDir && tree.open.has(path)
-  const Icon = isDir
-    ? open
-      ? FolderOpen
-      : Folder
-    : entry.kind === "symlink"
-      ? FileSymlink
-      : File
   return (
     <li ref={ref}>
       <div
-        className={cn(row, "relative", active && "bg-muted font-medium")}
+        className={cn(
+          row,
+          "relative",
+          isDir && "text-ink",
+          active && "bg-tint font-medium text-ink hover:bg-tint"
+        )}
         style={indent(depth)}
       >
         {isDir ? (
@@ -202,12 +193,9 @@ function Node({
           className="flex h-full min-w-0 flex-1 items-center gap-1.5 after:absolute after:inset-0 after:rounded-md"
           aria-current={active ? "page" : undefined}
         >
-          <Icon
-            className={cn(
-              "size-4 shrink-0",
-              isDir ? "fill-sky-500/20 text-sky-600" : "text-muted-foreground"
-            )}
-          />
+          {entry.kind === "symlink" && (
+            <FileSymlink className="size-3.5 shrink-0 text-label" />
+          )}
           <span className="truncate">{entry.name}</span>
         </Link>
       </div>
