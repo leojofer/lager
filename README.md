@@ -5,22 +5,6 @@ front of it are disposable.
 
 *Lager* is German for warehouse.
 
-## The idea
-
-Most Git servers keep repositories on a local disk, and then spend their
-lives replicating and backing up that disk. lager keeps every repository
-in an S3-compatible bucket instead. A server holds only a cache, which it
-can rebuild from the bucket at any time.
-
-So you can run one server or twenty behind a load balancer, and any of
-them can answer any request. Delete one and nothing is lost.
-
-What keeps them from stepping on each other is one small object per
-repository, the head. A push counts only once the server has swapped that
-object, and the swap succeeds only if nobody else got there first. That
-single compare-and-swap puts all changes of a repository in one order,
-without locks and without the servers talking to each other.
-
 ## What you get
 
 - Standard Git over HTTPS and SSH. Your client does not know the difference.
@@ -60,6 +44,8 @@ removes the containers and their data again.
 
 ## Read more
 
+- [HOW_IT_WORKS.md](HOW_IT_WORKS.md): how many servers share one bucket
+  without stepping on each other.
 - [ARCHITECTURE.md](ARCHITECTURE.md): the design, from the log format to recovery.
 - [docs/decisions/](docs/decisions/): why things are the way they are, one decision per file.
 - [deploy/README.md](deploy/README.md): running it for real.
