@@ -1,7 +1,8 @@
 //! Configuration from environment variables. It holds only what a server
 //! needs to start: its address, the storage service, the database, the
-//! change bus, the web session secret, the GitHub OAuth app, and the SSH
-//! host key (docs/decisions/0024-configuration-in-the-environment.md).
+//! change bus, the web session secret, the GitHub OAuth app, the SSH
+//! host key, and the mail server
+//! (docs/decisions/0024-configuration-in-the-environment.md).
 //! Repositories live in the catalog in storage, users in the database, and
 //! limits are fixed in [`crate::limits`]. An empty variable counts as unset.
 //!
@@ -24,6 +25,8 @@
 //! | `LAGER_SSH_HOST_KEY` | | Turns on Git over SSH |
 //! | `LAGER_SSH_LISTEN` | `0.0.0.0:2222` | |
 //! | `LAGER_SSH_PORT` | `22` | The port clients connect to, for the clone address |
+//! | `LAGER_SMTP_URL` | | Mail for verifying email addresses: `smtps://user:password@host` or `smtp://…?tls=required`; needs `LAGER_DOMAIN` |
+//! | `LAGER_MAIL_FROM` | required with `LAGER_SMTP_URL` | Sender, such as `Lager <git@example.com>` |
 
 use std::net::SocketAddr;
 use std::path::PathBuf;
@@ -37,6 +40,7 @@ pub struct Config {
     pub web: Option<WebConfig>,
     pub github: Option<GithubConfig>,
     pub ssh: Option<SshConfig>,
+    pub mail: Option<MailConfig>,
 }
 
 #[derive(Clone, Debug)]
@@ -116,6 +120,20 @@ pub struct SshConfig {
     /// `ssh://git@<LAGER_DOMAIN>`, with `:<LAGER_SSH_PORT>` unless it is 22,
     /// or for local development the listen address on the loopback address.
     pub public_url: Option<String>,
+}
+
+/// A mail server for verifying email addresses
+/// (docs/decisions/0032-email-verification.md). Without it, only GitHub
+/// verifies addresses.
+#[derive(Clone, Debug)]
+pub struct MailConfig {
+    /// `smtps://` (TLS) or `smtp://` (`?tls=required` for STARTTLS), with
+    /// the user and password in the URL.
+    pub smtp_url: String,
+    /// The sender, such as `Lager <git@example.com>`.
+    pub from: String,
+    /// `https://<LAGER_DOMAIN>`: the links in the mail lead there.
+    pub origin: String,
 }
 
 impl Config {
@@ -234,6 +252,25 @@ impl Config {
             None => None,
         };
 
+        let mail = match get("LAGER_SMTP_URL") {
+            Some(smtp_url) => {
+                anyhow::ensure!(web.is_some(), "LAGER_SMTP_URL needs LAGER_SESSION_SECRET");
+                let origin = public_origin.clone().ok_or_else(|| {
+                    anyhow::anyhow!("LAGER_SMTP_URL needs LAGER_DOMAIN for the links in mails")
+                })?;
+                anyhow::ensure!(
+                    smtp_url.starts_with("smtps://") || smtp_url.starts_with("smtp://"),
+                    "LAGER_SMTP_URL must start with smtps:// or smtp://"
+                );
+                Some(MailConfig {
+                    smtp_url,
+                    from: required("LAGER_MAIL_FROM")?,
+                    origin,
+                })
+            }
+            None => None,
+        };
+
         Ok(Config {
             server,
             storage,
@@ -242,6 +279,7 @@ impl Config {
             web,
             github,
             ssh,
+            mail,
         })
     }
 

@@ -94,8 +94,9 @@ const env: Record<string, string> = {
 }
 // One line per variable, for `set -a; . .local/lager.env; set +a`.
 writeFileSync(envFile, Object.entries(env).map(([k, v]) => `${k}=${v}\n`).join(""))
-// GitHub mirrors: LAGER_GITHUB_CLIENT_ID and LAGER_GITHUB_CLIENT_SECRET pass
-// through from the environment.
+// GitHub mirrors (LAGER_GITHUB_CLIENT_ID and LAGER_GITHUB_CLIENT_SECRET) and
+// mail (LAGER_SMTP_URL, LAGER_MAIL_FROM, and LAGER_DOMAIN) pass through from
+// the environment.
 const serverEnv = {
   RUST_LOG: "warn",
   ...process.env,

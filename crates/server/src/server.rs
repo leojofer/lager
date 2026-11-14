@@ -287,6 +287,10 @@ pub async fn start_with_listener(
         pulls,
         activity,
         github,
+        mail: match &cfg.mail {
+            Some(m) => Some(Arc::new(crate::mail::Mailer::new(m)?)),
+            None => None,
+        },
         processes: Arc::new(Semaphore::new(limits::MAX_GIT_PROCESSES)),
         socket_path: socket_path.clone(),
         health: crate::http::health::Health::new(svc.storage.clone(), bus),

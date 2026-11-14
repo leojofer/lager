@@ -33,6 +33,8 @@ const GROUPS = [
 function Settings() {
   const state = useLive()
   const pathname = useLocation({ select: (l) => l.pathname })
+  // With the query, so a verification link survives signing in.
+  const here = useLocation({ select: (l) => l.href })
   const section = GROUPS.flatMap(
     (g): readonly { to: string; title: string }[] => g.sections
   ).find((s) => s.to === pathname)
@@ -53,7 +55,7 @@ function Settings() {
           <p className="text-sm">
             <Link
               to="/-/sign-in"
-              search={{ next: pathname }}
+              search={{ next: here }}
               className="font-medium text-primary hover:underline"
             >
               Sign in

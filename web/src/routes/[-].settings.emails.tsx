@@ -1,10 +1,16 @@
-import { createFileRoute } from "@tanstack/react-router"
-import { useState } from "react"
+import { createFileRoute, useNavigate } from "@tanstack/react-router"
+import { useEffect, useRef, useState } from "react"
 import { useQuery, useQueryClient } from "@tanstack/react-query"
-import { Mail } from "lucide-react"
+import { BadgeCheck, Mail } from "lucide-react"
 
 import { useGithub, useLive } from "@/lib/api"
-import { addEmail, listEmails, removeEmail } from "@/lib/emails"
+import {
+  addEmail,
+  listEmails,
+  removeEmail,
+  sendVerification,
+  verifyEmail,
+} from "@/lib/emails"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
@@ -14,14 +20,21 @@ import { GithubMark } from "@/components/github-mark"
 import { SettingsHeader } from "@/components/settings-header"
 
 export const Route = createFileRoute("/-/settings/emails")({
+  // The link in a verification mail.
+  validateSearch: (s: Record<string, unknown>): { verify?: string } => ({
+    verify: typeof s.verify === "string" ? s.verify : undefined,
+  }),
   component: Emails,
 })
 
 function Emails() {
   const state = useLive()
   const qc = useQueryClient()
+  const navigate = useNavigate()
+  const { verify } = Route.useSearch()
   const [busy, setBusy] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [notice, setNotice] = useState<string | null>(null)
   const query = useQuery({
     queryKey: ["emails", state?.user],
     queryFn: listEmails,
@@ -35,12 +48,15 @@ function Emails() {
     !!github.data?.account &&
     !!query.data &&
     !query.data.emails.some(
-      (e) => e.github && !e.email.endsWith("@users.noreply.github.com")
+      (e) =>
+        e.verified === "github" &&
+        !e.email.endsWith("@users.noreply.github.com")
     )
 
   async function run(work: () => Promise<unknown>) {
     setBusy(true)
     setError(null)
+    setNotice(null)
     try {
       await work()
       await qc.invalidateQueries({ queryKey: ["emails"] })
@@ -52,13 +68,27 @@ function Emails() {
     }
   }
 
+  // Each link is used once, also under React's double effects.
+  const used = useRef<string | null>(null)
+  useEffect(() => {
+    if (!verify || !state?.user || used.current === verify) return
+    used.current = verify
+    navigate({ to: "/-/settings/emails", search: {}, replace: true })
+    run(async () => {
+      const { email } = await verifyEmail(verify)
+      setNotice(`Verified ${email}.`)
+    })
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [verify, state?.user])
+
   function add(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault()
     const form = e.currentTarget
     const email = String(new FormData(form).get("email") ?? "")
     run(async () => {
-      await addEmail(email)
+      const { sent } = await addEmail(email)
       form.reset()
+      if (sent) setNotice(`Sent a link to ${email}.`)
     })
   }
 
@@ -66,11 +96,16 @@ function Emails() {
     <div className="grid gap-6">
       <SettingsHeader
         title="Emails"
-        description="Commits with these author emails count on your profile."
+        description="Commits by verified emails count on your profile."
       />
       {(error || query.error) && (
         <Alert variant="destructive">
           <AlertDescription>{error ?? query.error?.message}</AlertDescription>
+        </Alert>
+      )}
+      {notice && (
+        <Alert>
+          <AlertDescription>{notice}</AlertDescription>
         </Alert>
       )}
 
@@ -83,11 +118,11 @@ function Emails() {
           </p>
         ) : (
           <ul className="divide-y rounded-md border">
-            {query.data?.emails.map(({ email, github }) => (
+            {query.data?.emails.map(({ email, verified }) => (
               <li key={email} className="flex h-10 items-center gap-3 px-3">
                 <Mail className="size-4 shrink-0 text-muted-foreground" />
                 <span className="min-w-0 truncate text-sm">{email}</span>
-                {github ? (
+                {verified === "github" ? (
                   <Badge
                     variant="outline"
                     className="ml-auto shrink-0"
@@ -97,16 +132,55 @@ function Emails() {
                     verified
                   </Badge>
                 ) : (
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    className="ml-auto shrink-0"
-                    disabled={busy}
-                    onClick={() => run(() => removeEmail(email))}
-                    aria-label={`Delete ${email}`}
-                  >
-                    Delete
-                  </Button>
+                  <>
+                    {verified === "mail" ? (
+                      <Badge
+                        variant="outline"
+                        className="ml-auto shrink-0"
+                        title="Verified by mail"
+                      >
+                        <BadgeCheck />
+                        verified
+                      </Badge>
+                    ) : (
+                      <>
+                        <Badge
+                          variant="outline"
+                          className="ml-auto shrink-0 text-muted-foreground"
+                          title="Counts nowhere until verified"
+                        >
+                          unverified
+                        </Badge>
+                        {query.data?.mail && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="shrink-0"
+                            disabled={busy}
+                            onClick={() =>
+                              run(async () => {
+                                await sendVerification(email)
+                                setNotice(`Sent a link to ${email}.`)
+                              })
+                            }
+                            aria-label={`Resend the link to ${email}`}
+                          >
+                            Resend
+                          </Button>
+                        )}
+                      </>
+                    )}
+                    <Button
+                      variant="ghost"
+                      size="sm"
+                      className="shrink-0"
+                      disabled={busy}
+                      onClick={() => run(() => removeEmail(email))}
+                      aria-label={`Delete ${email}`}
+                    >
+                      Delete
+                    </Button>
+                  </>
                 )}
               </li>
             ))}
@@ -122,20 +196,26 @@ function Emails() {
         )}
       </section>
 
-      <form onSubmit={add} className="flex gap-2">
-        <Input
-          name="email"
-          type="email"
-          placeholder="you@example.com"
-          aria-label="Email"
-          required
-          maxLength={254}
-          disabled={busy}
-        />
-        <Button disabled={busy} className="shrink-0">
-          Add
-        </Button>
-      </form>
+      {query.data && !query.data.mail ? (
+        <p className="text-sm text-muted-foreground">
+          This server sends no mail. Connect GitHub to add its verified emails.
+        </p>
+      ) : (
+        <form onSubmit={add} className="flex gap-2">
+          <Input
+            name="email"
+            type="email"
+            placeholder="you@example.com"
+            aria-label="Email"
+            required
+            maxLength={254}
+            disabled={busy}
+          />
+          <Button disabled={busy} className="shrink-0">
+            Add
+          </Button>
+        </form>
+      )}
     </div>
   )
 }
