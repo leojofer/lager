@@ -164,6 +164,9 @@ pub enum Query {
         name: String,
     },
     GithubDisconnect,
+    /// Stops the user's GitHub account from signing in
+    /// (docs/decisions/0031-github-sign-in.md).
+    GithubUnlink,
 }
 
 fn default_limit() -> u32 {
@@ -295,7 +298,8 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::GithubRepos
         | Query::GithubMirror { .. }
         | Query::GithubUnmirror { .. }
-        | Query::GithubDisconnect => return super::github::run(s, who, q).await,
+        | Query::GithubDisconnect
+        | Query::GithubUnlink => return super::github::run(s, who, q).await,
         Query::RepoCreate { name, public } => return create(s, who, name, *public).await,
         Query::RepoRename { .. } | Query::RepoVisibility { .. } | Query::RepoDelete { .. } => {
             return super::settings::run(s, who, q).await;
@@ -338,6 +342,7 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::GithubMirror { .. }
         | Query::GithubUnmirror { .. }
         | Query::GithubDisconnect
+        | Query::GithubUnlink
         | Query::RepoCreate { .. }
         | Query::RepoRename { .. }
         | Query::RepoVisibility { .. }

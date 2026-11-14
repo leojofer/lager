@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 
-import { signUpOptions, signUpWithPassword } from "@/lib/api"
+import { githubSignInHref, signUpOptions, signUpWithPassword } from "@/lib/api"
 import {
   passkeyError,
   signUpWithPasskey,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/passkeys"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { GithubMark } from "@/components/github-mark"
 import {
   Card,
   CardContent,
@@ -165,6 +166,26 @@ function SignUp() {
                       onClick={withPasskey}
                     >
                       Create account with a passkey
+                    </Button>
+                  </>
+                )}
+                {options.data.github && (
+                  <>
+                    {!passkey && (
+                      <p className="text-center text-sm text-muted-foreground">
+                        Or, without a password
+                      </p>
+                    )}
+                    <Button
+                      type="button"
+                      variant="outline"
+                      disabled={busy}
+                      asChild
+                    >
+                      <a href={githubSignInHref()}>
+                        <GithubMark />
+                        Create account with GitHub
+                      </a>
                     </Button>
                   </>
                 )}

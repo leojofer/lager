@@ -419,6 +419,8 @@ export interface GithubStatus {
   /** False without LAGER_GITHUB_CLIENT_ID on the server. */
   configured: boolean
   account: { login: string } | null
+  /** The GitHub account that signs the user in (decision 31). */
+  sign_in: { login: string } | null
   mirrors: GithubMirror[]
 }
 
@@ -453,7 +455,7 @@ export function useGithubRepos(enabled: boolean) {
   })
 }
 
-/** `github_mirror`, `github_unmirror`, or `github_disconnect`. */
+/** `github_mirror`, `github_unmirror`, `github_disconnect`, or `github_unlink`. */
 export function useGithubChange() {
   const qc = useQueryClient()
   return useMutation({
@@ -466,14 +468,50 @@ export function useGithubChange() {
   })
 }
 
-/** Which ways of signing up the server offers; passkeys need its domain. */
+/**
+ * Which ways of signing up the server offers; passkeys need its domain.
+ * `github`: GitHub signs in, and signs up with `enabled`.
+ */
 export async function signUpOptions(): Promise<{
   enabled: boolean
   passkey: boolean
+  github: boolean
 }> {
   const r = await fetch("/-/api/signup")
-  if (!r.ok) return { enabled: false, passkey: false }
+  if (!r.ok) return { enabled: false, passkey: false, github: false }
   return r.json()
+}
+
+/** The page that signs in with GitHub, then goes to `next`. */
+export function githubSignInHref(next?: string) {
+  return next
+    ? `/-/api/github/sign-in?next=${encodeURIComponent(next)}`
+    : "/-/api/github/sign-in"
+}
+
+/** The GitHub login of the sign-up that GitHub just named; null once expired. */
+export async function githubSignUpLogin(): Promise<string | null> {
+  const r = await fetch("/-/api/github/sign-up")
+  if (!r.ok) return null
+  return (await r.json()).login
+}
+
+/** Creates the account of a GitHub sign-up, and signs in. */
+export async function signUpWithGithub(user: string) {
+  const r = await fetch("/-/api/github/sign-up", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ user }),
+  })
+  if (!r.ok) {
+    const body = await r.json().catch(() => ({}))
+    throw new LiveError(
+      body.code ?? "error",
+      body.message ?? `sign-up failed (${r.status})`
+    )
+  }
+  live.reconnect()
+  queryClient.clear()
 }
 
 /** Creates an account with a password, and signs in. */
