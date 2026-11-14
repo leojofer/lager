@@ -264,6 +264,23 @@ CREATE TABLE lager_github_contributions (
 );
 ALTER TABLE lager_github_accounts ADD COLUMN contributions_at timestamptz;
 "#,
+    // Sign-in with GitHub (docs/decisions/0030-github-sign-in.md): at most
+    // one GitHub account per user and one user per GitHub account. Apart
+    // from the accounts connected for mirrors, which need a token; connected
+    // accounts are linked, the latest one where two users connected the same.
+    r#"
+CREATE TABLE lager_github_logins (
+    github_id bigint PRIMARY KEY,
+    user_name text NOT NULL UNIQUE REFERENCES lager_users (name) ON DELETE CASCADE,
+    -- GitHub's login when last seen; for display only.
+    login text NOT NULL,
+    created_at timestamptz NOT NULL DEFAULT now()
+);
+INSERT INTO lager_github_logins (github_id, user_name, login)
+SELECT DISTINCT ON (github_id) github_id, user_name, login
+FROM lager_github_accounts
+ORDER BY github_id, created_at DESC;
+"#,
 ];
 
 /// SSH keys a user can have at the same time.

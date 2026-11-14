@@ -175,19 +175,32 @@ impl Github {
 
     // OAuth and the GitHub API.
 
-    /// The GitHub page that asks the user to grant access. `redirect`: the
-    /// callback URL; without it, GitHub uses the app's.
+    /// The GitHub page that asks the user to grant access for mirrors.
+    /// `redirect`: the callback URL; without it, GitHub uses the app's.
     pub fn authorize_url(&self, state: &str, redirect: Option<&str>) -> String {
+        // Private repositories need `repo`; OAuth apps have no read-only
+        // scope for them. GitHub takes pushes that change workflow files
+        // only with `workflow`. `user:email` lists the verified email
+        // addresses for profiles.
+        self.authorize(Some("repo workflow user:email"), state, redirect)
+    }
+
+    /// The GitHub page that asks the user to sign in here
+    /// (docs/decisions/0030-github-sign-in.md). No scope: the token reads
+    /// only public information, and is revoked once it named the account.
+    pub fn sign_in_url(&self, state: &str, redirect: Option<&str>) -> String {
+        self.authorize(None, state, redirect)
+    }
+
+    fn authorize(&self, scope: Option<&str>, state: &str, redirect: Option<&str>) -> String {
         let mut params = vec![
             ("client_id", self.cfg.client_id.as_str()),
-            // Private repositories need `repo`; OAuth apps have no
-            // read-only scope for them. GitHub takes pushes that change
-            // workflow files only with `workflow`. `user:email` lists the
-            // verified email addresses for profiles.
-            ("scope", "repo workflow user:email"),
             ("state", state),
             ("allow_signup", "false"),
         ];
+        if let Some(s) = scope {
+            params.push(("scope", s));
+        }
         if let Some(r) = redirect {
             params.push(("redirect_uri", r));
         }
@@ -196,9 +209,8 @@ impl Github {
             .to_string()
     }
 
-    /// Exchanges the callback's code for a token and connects the account.
-    /// Answers the GitHub login.
-    pub async fn finish_connect(&self, user: &str, code: &str) -> Result<String, GithubError> {
+    /// Exchanges a callback's code for a token.
+    async fn exchange(&self, code: &str) -> Result<String, GithubError> {
         let answer: TokenAnswer = self
             .http
             .post("https://github.com/login/oauth/access_token")
@@ -213,21 +225,59 @@ impl Github {
             .error_for_status()?
             .json()
             .await?;
-        let Some(token) = answer.access_token else {
-            return Err(GithubError::Invalid(
+        answer.access_token.ok_or_else(|| {
+            GithubError::Invalid(
                 answer
                     .error_description
                     .unwrap_or_else(|| "GitHub did not grant access".into()),
-            ));
-        };
+            )
+        })
+    }
+
+    /// Exchanges the callback's code for a token and connects the account.
+    /// Answers the GitHub login.
+    pub async fn finish_connect(&self, user: &str, code: &str) -> Result<String, GithubError> {
+        let token = self.exchange(code).await?;
         let me: GithubUser = self.api(&token, "/user").await?;
         self.db.connect(user, me.id, &me.login, &token).await?;
+        // A connected account signs in too, unless either is linked already.
+        self.db.link(user, me.id, &me.login).await?;
         if let Err(e) = self.import_emails(user).await {
             tracing::warn!(user, error = %e, "GitHub email addresses not imported");
         }
         self.wake.notify_one();
         tracing::info!(user, github = %me.login, "GitHub account connected");
         Ok(me.login)
+    }
+
+    /// Exchanges the callback's code of a sign-in for the GitHub account's
+    /// ID and login, and revokes the token.
+    pub async fn finish_sign_in(&self, code: &str) -> Result<(i64, String), GithubError> {
+        let token = self.exchange(code).await?;
+        let me: GithubUser = self.api(&token, "/user").await?;
+        // GitHub keeps ten tokens per user, app, and scope, and drops the
+        // oldest beyond; an unused one must not push out a mirror's.
+        if let Err(e) = self.revoke(&token).await {
+            tracing::warn!(github = %me.login, error = %e, "sign-in token not revoked");
+        }
+        Ok((me.id, me.login))
+    }
+
+    async fn revoke(&self, token: &str) -> Result<(), GithubError> {
+        // Never a token that mirrors use, should GitHub hand one out again.
+        if self.db.token_in_use(token).await? {
+            return Ok(());
+        }
+        self.http
+            .delete(format!("{API}/applications/{}/token", self.cfg.client_id))
+            .basic_auth(&self.cfg.client_id, Some(&self.cfg.client_secret))
+            .header(reqwest::header::ACCEPT, "application/vnd.github+json")
+            .header("x-github-api-version", "2022-11-28")
+            .json(&serde_json::json!({ "access_token": token }))
+            .send()
+            .await?
+            .error_for_status()?;
+        Ok(())
     }
 
     async fn api<T: serde::de::DeserializeOwned>(
@@ -404,9 +454,11 @@ impl Github {
         let user = signed_in(who)?;
         let account = self.db.account(user).await?;
         let mirrors = self.db.mirrors(user).await?;
+        let sign_in = self.db.linked(user).await?;
         Ok(serde_json::json!({
             "configured": true,
             "account": account,
+            "sign_in": sign_in.map(|(_, login)| serde_json::json!({ "login": login })),
             "mirrors": mirrors,
         }))
     }

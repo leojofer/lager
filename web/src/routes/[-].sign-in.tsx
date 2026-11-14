@@ -2,7 +2,7 @@ import { createFileRoute, Link, useNavigate } from "@tanstack/react-router"
 import { useQuery } from "@tanstack/react-query"
 import { useEffect, useState } from "react"
 
-import { signIn, signUpOptions } from "@/lib/api"
+import { githubSignInHref, signIn, signUpOptions } from "@/lib/api"
 import {
   signInWithPasskey,
   passkeyError,
@@ -10,6 +10,7 @@ import {
 } from "@/lib/passkeys"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import { Button } from "@/components/ui/button"
+import { GithubMark } from "@/components/github-mark"
 import {
   Card,
   CardContent,
@@ -21,17 +22,21 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 
 export const Route = createFileRoute("/-/sign-in")({
-  validateSearch: (s: Record<string, unknown>): { next?: string } => ({
+  validateSearch: (
+    s: Record<string, unknown>
+  ): { next?: string; github_error?: string } => ({
     next:
       typeof s.next === "string" && s.next.startsWith("/") ? s.next : undefined,
+    github_error:
+      typeof s.github_error === "string" ? s.github_error : undefined,
   }),
   component: SignIn,
 })
 
 function SignIn() {
-  const { next } = Route.useSearch()
+  const { next, github_error } = Route.useSearch()
   const navigate = useNavigate()
-  const [error, setError] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(github_error ?? null)
   const [busy, setBusy] = useState(false)
 
   const [passkeySupported, setPasskeySupported] = useState(false)
@@ -107,7 +112,15 @@ function SignIn() {
                 Sign in with a passkey
               </Button>
             )}
-            {passkeySupported && (
+            {signUp.data?.github && (
+              <Button type="button" variant="outline" disabled={busy} asChild>
+                <a href={githubSignInHref(destination())}>
+                  <GithubMark />
+                  Sign in with GitHub
+                </a>
+              </Button>
+            )}
+            {(passkeySupported || signUp.data?.github) && (
               <p className="text-center text-sm text-muted-foreground">
                 Or sign in with your password
               </p>

@@ -153,7 +153,8 @@ impl PgUsers {
             .starts_with(NO_PASSWORD))
     }
 
-    /// An account without a password keeps its last passkey, so it can still sign in.
+    /// An account without a password keeps its last passkey, unless GitHub
+    /// signs it in, so it can still sign in.
     pub async fn delete_passkey(
         &self,
         user: &str,
@@ -171,13 +172,7 @@ impl PgUsers {
         if deleted.rows_affected() != 1 {
             return Err(AuthError::BadCredentials.into());
         }
-        let left: i64 =
-            sqlx::query_scalar("SELECT count(*) FROM lager_passkeys WHERE user_name = $1")
-                .bind(user)
-                .fetch_one(&mut *tx)
-                .await
-                .map_err(unavailable)?;
-        if left == 0 && hash.starts_with(NO_PASSWORD) {
+        if hash.starts_with(NO_PASSWORD) && !other_sign_in(&mut tx, user).await? {
             return Err(PasskeyError::Conflict(
                 "your account has no password; add another passkey before removing this one".into(),
             ));
@@ -541,6 +536,90 @@ impl PgUsers {
         tx.commit().await.map_err(unavailable)?;
         Ok(password_stamp(password_hash))
     }
+
+    /// Creates an account without a password that the GitHub account
+    /// `github_id` signs in (docs/decisions/0030-github-sign-in.md); returns
+    /// its session stamp.
+    pub async fn create_signed_up_with_github(
+        &self,
+        name: &str,
+        github_id: i64,
+        login: &str,
+    ) -> std::result::Result<[u8; 32], PasskeyError> {
+        validate_user_name(name).map_err(|e| PasskeyError::Invalid(e.to_string()))?;
+        let hash = format!(
+            "{NO_PASSWORD}{}",
+            URL_SAFE_NO_PAD.encode(rand::random::<[u8; 32]>())
+        );
+        let mut tx = self.pool.begin().await.map_err(unavailable)?;
+        // The same lock as the other sign-ups.
+        sqlx::query("SELECT pg_advisory_xact_lock($1)")
+            .bind(ANONYMOUS_LOCK)
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        if name_taken(&mut tx, name).await? {
+            return Err(taken(name));
+        }
+        sqlx::query(
+            "INSERT INTO lager_users (name, password_hash, updated_by)
+             VALUES ($1, $2, $1)",
+        )
+        .bind(name)
+        .bind(&hash)
+        .execute(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        let linked = sqlx::query(
+            "INSERT INTO lager_github_logins (github_id, user_name, login)
+             VALUES ($1, $2, $3) ON CONFLICT DO NOTHING",
+        )
+        .bind(github_id)
+        .bind(name)
+        .bind(login)
+        .execute(&mut *tx)
+        .await
+        .map_err(unavailable)?;
+        if linked.rows_affected() != 1 {
+            return Err(PasskeyError::Conflict(format!(
+                "the GitHub account @{login} already signs in another user"
+            )));
+        }
+        tx.commit().await.map_err(unavailable)?;
+        Ok(password_stamp(&hash))
+    }
+
+    /// Unlinks the user's GitHub account from sign-in. An account without
+    /// a password and without passkeys keeps it, so it can still sign in.
+    pub async fn unlink_github(&self, user: &str) -> std::result::Result<(), PasskeyError> {
+        let mut tx = self.pool.begin().await.map_err(unavailable)?;
+        let (hash, _) = account(&mut tx, user).await?;
+        sqlx::query("DELETE FROM lager_github_logins WHERE user_name = $1")
+            .bind(user)
+            .execute(&mut *tx)
+            .await
+            .map_err(unavailable)?;
+        if hash.starts_with(NO_PASSWORD) && !other_sign_in(&mut tx, user).await? {
+            return Err(PasskeyError::Conflict(
+                "your account has no password; add a passkey before unlinking GitHub".into(),
+            ));
+        }
+        tx.commit().await.map_err(unavailable)?;
+        Ok(())
+    }
+}
+
+/// Whether a passkey or a GitHub account still signs in an account without
+/// a password. The caller holds the user's row lock, as [`account`] takes it.
+async fn other_sign_in(conn: &mut PgConnection, user: &str) -> Result<bool> {
+    sqlx::query_scalar(
+        "SELECT EXISTS (SELECT 1 FROM lager_passkeys WHERE user_name = $1)
+             OR EXISTS (SELECT 1 FROM lager_github_logins WHERE user_name = $1)",
+    )
+    .bind(user)
+    .fetch_one(conn)
+    .await
+    .map_err(unavailable)
 }
 
 fn taken(name: &str) -> PasskeyError {

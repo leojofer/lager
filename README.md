@@ -40,7 +40,7 @@ The web interface is at http://127.0.0.1:3000/ (sign in as `dev` / `dev-password
 To run `lager` by hand, load the configuration first:
 `set -a; . .local/lager.env; set +a`.
 
-For GitHub mirrors, register a GitHub OAuth app with the callback URL
+For GitHub mirrors and sign-in, register a GitHub OAuth app with the callback URL
 `http://127.0.0.1:8080/-/api/github/callback` and start with
 `LAGER_GITHUB_CLIENT_ID=... LAGER_GITHUB_CLIENT_SECRET=... scripts/local.ts`.
 
@@ -171,7 +171,7 @@ An empty variable counts as unset. Limits and timings are fixed in
 | `LAGER_NATS_URL` | none | Change events between servers. Without it, events stay on this server. |
 | `LAGER_SESSION_SECRET` | none | Turns on the web interface and its API under `/-/`. At least 32 characters, the same on every server; a new one signs everyone out. |
 | `LAGER_SIGN_UP` | `false` | `true`: anyone can create an account with a password, and with a passkey when `LAGER_DOMAIN` is set. |
-| `LAGER_GITHUB_CLIENT_ID`, `LAGER_GITHUB_CLIENT_SECRET` | none | A GitHub OAuth app for mirrors, with the callback URL `https://<domain>/-/api/github/callback`. |
+| `LAGER_GITHUB_CLIENT_ID`, `LAGER_GITHUB_CLIENT_SECRET` | none | A GitHub OAuth app for mirrors and **Sign in with GitHub** (with `LAGER_SIGN_UP`, sign-up too), with the callback URL `https://<domain>/-/api/github/callback`. |
 | `LAGER_SSH_HOST_KEY` | none | Turns on Git over SSH. An OpenSSH private key without a passphrase, in double quotes across its lines; the same on every server, and kept: clients refuse a changed host key. |
 | `LAGER_SSH_LISTEN` | `0.0.0.0:2222` | |
 | `LAGER_SSH_PORT` | `22` | The port clients connect to; the clone menu shows `ssh://git@<domain>:<port>` unless it is 22. |
@@ -223,6 +223,11 @@ where the container image installs it; without it, only the API under
   PostgreSQL, their refs and merges in the log; a push that brings the
   source into the target marks the pull request merged. See
   [decision 19](docs/decisions/0019-pull-requests.md).
+- Sign in with GitHub (`LAGER_GITHUB_CLIENT_ID`): the sign-in page offers it,
+  and with `LAGER_SIGN_UP` a GitHub account that is new here creates an
+  account under a name the user picks. Sign-in asks GitHub for no access;
+  **Settings → GitHub** links or unlinks the account. See
+  [decision 30](docs/decisions/0030-github-sign-in.md).
 - GitHub mirrors (`LAGER_GITHUB_CLIENT_ID`): **Settings** in the user menu has
   **Connect with GitHub**. Then pick GitHub repositories; each becomes
   `<user>/<name>` here and follows GitHub's branches, tags, and default
