@@ -229,7 +229,8 @@ where the container image installs it; without it, only the API under
 - Pull requests: open one on the web from two branches of a repository
   (`/<repo>/-/pulls`), discuss it, and merge it with a merge commit or as
   one squashed commit. Open pull requests whose target branch is another's
-  source branch show as a stack. Users with read access open and comment; merging
+  source branch show as a stack; the author or a user with write access
+  can change the target branch of an open one. Users with read access open and comment; merging
   needs write access and the ref rules of the target branch. The server
   keeps `refs/pull/<n>/head` at the source branch (`git fetch origin
   pull/7/head`); clients cannot push to `refs/pull/`. Pull requests live in
