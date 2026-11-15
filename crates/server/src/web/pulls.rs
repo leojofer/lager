@@ -188,6 +188,7 @@ async fn pull(
         s.pulls.clone().request_sync(repo.id);
     }
     let events = s.pulls.db.events(repo.id, number).await?;
+    let stack = s.pulls.db.stack(repo.id, &p).await?;
     let view = s.registry.controller(repo.id).prepare_read().await?;
     let _permits = crate::http::process_permit(s)
         .await
@@ -290,6 +291,7 @@ async fn pull(
     Ok(json!({
         "pull": p,
         "events": events,
+        "stack": stack,
         "head": head,
         "base": base,
         "source_oid": source,
