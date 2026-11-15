@@ -47,7 +47,7 @@ export function Overview({ repo, refs }: { repo: string; refs: Refs }) {
   const activity = useActivity(repo, refs.head)
 
   return (
-    <div className="flex min-h-[calc(100svh-3rem)] flex-col">
+    <div className="flex min-h-[calc(var(--frame-height)-3rem)] flex-col">
       <Hero repo={repo} refs={refs} updated={activity.commits?.[0]} />
       <div className="grid shrink-0 grid-cols-2 border-y border-hairline lg:grid-cols-4">
         <Stat label="Open pull requests" to={href(repo, "pulls")}>

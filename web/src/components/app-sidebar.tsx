@@ -80,7 +80,7 @@ export function AppSidebar({
   const others = repos.data?.repos.filter((r) => !own?.includes(r))
 
   return (
-    <Sidebar className="border-sidebar-border">
+    <Sidebar className="group-data-[side=left]:border-r-0">
       <SidebarHeader className="gap-4.5 px-3 pt-4 pb-0">
         <div className="flex items-center justify-between py-1 pr-0.5 pl-1.5">
           <Link to="/" onClick={close} className="flex items-center gap-2.25">
