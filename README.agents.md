@@ -279,6 +279,14 @@ above 185 seconds, so that running pushes finish.
 terminates HTTPS; repositories live in an external S3-compatible service.
 `master` deploys to staging this way; see [deploy/README.md](deploy/README.md).
 
+A release is a version bump on `master` with the tag `v<version>`:
+
+```bash
+scripts/bump.sh           # 0.1.12 -> 0.1.13: commit and tag
+scripts/bump.sh 0.2.0     # a given version
+scripts/bump.sh --push    # also push master and the tag
+```
+
 On a Mac, build for x86_64 servers with
 `docker build --platform linux/amd64 ...`; it runs under emulation and is
 slow.
