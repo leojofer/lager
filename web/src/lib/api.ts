@@ -140,6 +140,14 @@ export interface PullEvent {
   edited_ms: number | null
 }
 
+/** One pull request of a stack. */
+export interface PullLayer {
+  number: number
+  title: string
+  source: string
+  target: string
+}
+
 export interface PullList {
   pulls: Pull[]
   counts: { open: number; closed: number }
@@ -153,6 +161,11 @@ export interface PullDetail {
   generation: number
   pull: Pull
   events: PullEvent[]
+  /**
+   * The open pull requests that build on each other, from the top down to
+   * the one on the base branch, this one among them; empty for one alone.
+   */
+  stack: PullLayer[]
   /** The comparison that shows the pull request's changes. */
   base: string
   head: string
@@ -268,9 +281,10 @@ export function useWatch(repo: string) {
         refresh()
       },
       onResync: refresh,
-      onPull: (number) => {
+      onPull: () => {
         qc.invalidateQueries({ queryKey: ["repo", repo, "pulls"] })
-        qc.invalidateQueries({ queryKey: ["repo", repo, "pull", number] })
+        // Every one: a stack changes with its other pull requests.
+        qc.invalidateQueries({ queryKey: ["repo", repo, "pull"] })
       },
     })
   }, [qc, repo])

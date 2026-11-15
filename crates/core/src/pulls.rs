@@ -14,6 +14,8 @@
 //! and [`Pulls::import_github_comment`] write them, and nothing here
 //! changes them.
 
+use std::collections::VecDeque;
+
 use serde::Serialize;
 use sqlx::postgres::{PgPool, PgRow};
 use sqlx::{Connection, PgConnection, Row};
@@ -75,6 +77,39 @@ pub struct Pull {
     pub github_url: Option<String>,
     #[serde(skip)]
     pub merge_request: Option<String>,
+}
+
+/// One pull request of a stack.
+#[derive(Clone, Debug, Serialize)]
+pub struct Layer {
+    pub number: u64,
+    pub title: String,
+    pub source: String,
+    pub target: String,
+}
+
+/// The stack of pull request `number` among the open ones, from the top
+/// down: each one's target branch is the source branch of the next. Empty
+/// for a pull request alone. Where two continue a stack, the first does.
+fn stack_of(open: &[Layer], number: u64) -> Vec<Layer> {
+    let Some(at) = open.iter().position(|l| l.number == number) else {
+        return vec![];
+    };
+    let mut order = VecDeque::from([at]);
+    while let Some(i) =
+        (0..open.len()).find(|i| !order.contains(i) && open[*i].target == open[order[0]].source)
+    {
+        order.push_front(i);
+    }
+    while let Some(i) = (0..open.len())
+        .find(|i| !order.contains(i) && open[*i].source == open[order[order.len() - 1]].target)
+    {
+        order.push_back(i);
+    }
+    if order.len() < 2 {
+        return vec![];
+    }
+    order.into_iter().map(|i| open[i].clone()).collect()
 }
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize)]
@@ -417,6 +452,33 @@ impl Pulls {
             }
         }
         Ok((rows.into_iter().map(pull).collect::<Result<_, _>>()?, c))
+    }
+
+    /// The stack of an open pull request, from the top down to the one on
+    /// the base branch; empty for one alone. It is not stored: it follows
+    /// the branches of the open pull requests.
+    pub async fn stack(&self, repo: RepoId, of: &Pull) -> Result<Vec<Layer>, PullError> {
+        if of.state != PullState::Open {
+            return Ok(vec![]);
+        }
+        let rows: Vec<(i64, String, String, String)> = sqlx::query_as(
+            "SELECT number, title, source, target FROM lager_pulls
+             WHERE repository = $1 AND state = 'open' ORDER BY number",
+        )
+        .bind(repo.to_string())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        let open: Vec<Layer> = rows
+            .into_iter()
+            .map(|(number, title, source, target)| Layer {
+                number: number as u64,
+                title,
+                source,
+                target,
+            })
+            .collect();
+        Ok(stack_of(&open, of.number))
     }
 
     /// Unmerged pull requests, including closed ones with a pending merge
