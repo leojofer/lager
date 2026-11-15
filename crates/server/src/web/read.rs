@@ -7,6 +7,7 @@
 //! The cache also holds objects of rejected pushes: a query names a branch,
 //! a tag, or a commit that a ref reaches, never any other object.
 
+use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
@@ -54,6 +55,10 @@ pub struct Commit {
     committer: Person,
     subject: String,
 }
+
+/// A commit as Git tells it, its author not looked up among the users.
+/// [`Git::link`] makes the [`Commit`]s of an answer from these.
+pub(super) struct Unlinked(Commit);
 
 #[derive(Serialize, TS)]
 pub struct RefInfo {
@@ -294,7 +299,7 @@ pub async fn raw(
 pub(super) const COMMIT_FORMAT: &str =
     "--format=%H%x00%P%x00%an%x00%ae%x00%at%x00%cn%x00%ce%x00%ct%x00%s%x1e";
 
-pub(super) fn parse_commits(out: &[u8]) -> Vec<Commit> {
+pub(super) fn parse_commits(out: &[u8]) -> Vec<Unlinked> {
     let person = |name: &str, email: &str, time: &str| Person {
         name: name.to_string(),
         email: email.to_string(),
@@ -309,13 +314,13 @@ pub(super) fn parse_commits(out: &[u8]) -> Vec<Commit> {
             let [oid, parents, an, ae, at, cn, ce, ct, subject] = f[..] else {
                 return None;
             };
-            Some(Commit {
+            Some(Unlinked(Commit {
                 oid: oid.to_string(),
                 parents: parents.split_whitespace().map(str::to_string).collect(),
                 author: person(an, ae, at),
                 committer: person(cn, ce, ct),
                 subject: subject.to_string(),
-            })
+            }))
         })
         .collect()
 }
@@ -354,6 +359,34 @@ impl<'a> Git<'a> {
             .map_err(|_| OpError::new("busy", "server busy; retry later"))?;
         Ok(Self { s, view, _permits })
     }
+
+    /// The commits for an answer: `user` on the authors whose email
+    /// belongs to a user, so their names link to the profile. The lookup
+    /// sees only the emails of commits that the reader may read already.
+    pub(super) async fn link(&self, commits: Vec<Unlinked>) -> Vec<Commit> {
+        let mut commits: Vec<Commit> = commits.into_iter().map(|c| c.0).collect();
+        let mut emails: Vec<String> = commits
+            .iter()
+            .map(|c| c.author.email.to_lowercase())
+            .collect();
+        emails.sort();
+        emails.dedup();
+        if emails.is_empty() {
+            return commits;
+        }
+        let owners: HashMap<String, String> = match self.s.directory.users().owners(&emails).await {
+            Ok(o) => o.into_iter().collect(),
+            Err(e) => {
+                // The names stay plain text.
+                tracing::warn!(error = ?e, "user store unavailable");
+                return commits;
+            }
+        };
+        for c in &mut commits {
+            c.author.user = owners.get(&c.author.email.to_lowercase()).cloned();
+        }
+        commits
+    }
 }
 
 /// The end of a query's time; walks over history check it.
@@ -370,7 +403,7 @@ impl Deadline {
 }
 
 /// A commit as `parse_commits` answers it.
-fn commit_info(c: &gix::Commit<'_>) -> Result<Commit, OpError> {
+fn commit_info(c: &gix::Commit<'_>) -> Result<Unlinked, OpError> {
     let person = |p: gix::actor::SignatureRef<'_>| {
         let p = p.trim();
         Person {
@@ -380,13 +413,13 @@ fn commit_info(c: &gix::Commit<'_>) -> Result<Commit, OpError> {
             user: None,
         }
     };
-    Ok(Commit {
+    Ok(Unlinked(Commit {
         oid: c.id.to_string(),
         parents: c.parent_ids().map(|p| p.to_string()).collect(),
         author: person(c.author()?),
         committer: person(c.committer()?),
         subject: subject(c.message_raw_sloppy()),
-    })
+    }))
 }
 
 /// The first paragraph of a message on one line, as Git's `%s`.
@@ -717,22 +750,22 @@ impl Git<'_> {
         Ok(Log {
             generation: self.view.generation,
             oid: oid.to_string(),
-            commits,
+            commits: self.link(commits).await,
             more,
         })
     }
 
     /// The last commit that changed `path`: the commit itself for the root.
     async fn last_commit(&self, oid: &str, path: &str) -> Result<Option<Commit>, OpError> {
-        if path.is_empty() {
+        let last = if path.is_empty() {
             let id = object_id(oid)?;
-            return self
-                .read(move |repo, _| Ok(Some(commit_info(&repo.find_commit(id)?)?)))
-                .await;
-        }
-        let args = ["log", COMMIT_FORMAT, "--max-count=1", oid, "--", path];
-        let out = self.run(&args, None).await?;
-        Ok(parse_commits(&out).pop())
+            self.read(move |repo, _| Ok(vec![commit_info(&repo.find_commit(id)?)?]))
+                .await?
+        } else {
+            let args = ["log", COMMIT_FORMAT, "--max-count=1", oid, "--", path];
+            parse_commits(&self.run(&args, None).await?)
+        };
+        Ok(self.link(last).await.pop())
     }
 
     async fn tree(&self, oid: &str, path: &str) -> Result<Tree, OpError> {
@@ -867,7 +900,7 @@ impl Git<'_> {
 
     async fn commit(&self, oid: &str) -> Result<CommitDetail, OpError> {
         let id = object_id(oid)?;
-        let commit = self
+        let (commit, message) = self
             .read(move |repo, _| {
                 let c = repo
                     .try_find_object(id)?
@@ -876,10 +909,16 @@ impl Git<'_> {
                     .map_err(|_| OpError::not_found("commit"))?;
                 let message = c.message_raw_sloppy().to_str_lossy().trim_end().to_string();
                 let mut commit = commit_info(&c)?;
-                commit.subject = message.lines().next().unwrap_or_default().to_string();
-                Ok(FullCommit { commit, message })
+                commit.0.subject = message.lines().next().unwrap_or_default().to_string();
+                Ok((commit, message))
             })
             .await?;
+        let commit = self
+            .link(vec![commit])
+            .await
+            .pop()
+            .map(|commit| FullCommit { commit, message })
+            .ok_or_else(|| OpError::not_found("commit"))?;
         // Merges show their changes against the first parent.
         let (diff, truncated) = self
             .run_limited(

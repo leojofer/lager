@@ -538,7 +538,7 @@ async fn compare(g: &Git<'_>, base: &str, head: &str) -> Result<Comparison, OpEr
         base,
         head,
         merge_base,
-        commits,
+        commits: g.link(commits).await,
         more,
         diff: String::from_utf8_lossy(&diff).into_owned(),
         truncated,

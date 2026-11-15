@@ -8,12 +8,12 @@
 //! (docs/decisions/0035-generated-wire-types.md).
 
 use std::any::TypeId;
-use std::collections::HashSet;
+use std::collections::{BTreeMap, HashSet};
 use std::future::Future;
 
 use serde::Serialize;
 use serde::de::DeserializeOwned;
-use serde_json::{Value, json};
+use serde_json::Value;
 use ts_rs::{Config, TS, TypeVisitor};
 
 use super::{github, profile, pulls, read, repos};
@@ -43,12 +43,10 @@ macro_rules! ops {
             name: &str,
             args: Value,
         ) -> Result<Value, OpError> {
-            let mut out = match name {
-                $($name => answer::<$op>(s, who, args).await?,)*
-                _ => return Err(OpError::bad(format!("unknown operation {name}"))),
-            };
-            link_authors(s, &mut out).await;
-            Ok(out)
+            match name {
+                $($name => answer::<$op>(s, who, args).await,)*
+                _ => Err(OpError::bad(format!("unknown operation {name}"))),
+            }
         }
 
         /// The TypeScript types of the answers, and `Ops`: the fields and
@@ -105,7 +103,8 @@ pub struct Empty {}
 struct Types {
     cfg: Config,
     seen: HashSet<TypeId>,
-    decls: Vec<String>,
+    /// By name: the order of the visits changes from build to build.
+    decls: BTreeMap<String, String>,
     ops: Vec<String>,
 }
 
@@ -115,7 +114,7 @@ impl Default for Types {
             // JSON numbers; no count or time here leaves their exact range.
             cfg: Config::new().with_large_int("number"),
             seen: HashSet::new(),
-            decls: vec![],
+            decls: BTreeMap::new(),
             ops: vec![],
         }
     }
@@ -129,8 +128,10 @@ impl TypeVisitor for Types {
         }
         T::visit_dependencies(self);
         let docs = T::docs().unwrap_or_default();
-        self.decls
-            .push(format!("{docs}export {}", T::decl(&self.cfg)));
+        self.decls.insert(
+            T::name(&self.cfg),
+            format!("{docs}export {}", T::decl(&self.cfg)),
+        );
     }
 }
 
@@ -151,7 +152,7 @@ impl Types {
              // (crates/server/src/web/ops.rs); do not edit.\n\n{}\n\n\
              /** The fields and the answer of every operation by name. */\n\
              export type Ops = {{\n{}\n}}\n",
-            self.decls.join("\n\n"),
+            Vec::from_iter(self.decls.into_values()).join("\n\n"),
             self.ops.join("\n"),
         )
     }
@@ -226,47 +227,4 @@ pub async fn readable(s: &AppInner, who: &Identity, name: &str) -> Result<RepoSe
         return Err(OpError::not_found("repository"));
     }
     Ok(repo)
-}
-
-/// Adds `user` to the authors of the commits in an answer whose email
-/// belongs to a user, so their names link to the profile. The lookup sees
-/// only the emails of commits that the reader may read already.
-async fn link_authors(s: &AppInner, out: &mut Value) {
-    let mut authors: Vec<&mut Value> = Vec::new();
-    for (key, v) in out.as_object_mut().into_iter().flatten() {
-        match (key.as_str(), v) {
-            ("commit" | "last_commit", c) => authors.extend(c.get_mut("author")),
-            ("commits", Value::Array(cs)) => {
-                authors.extend(cs.iter_mut().filter_map(|c| c.get_mut("author")))
-            }
-            _ => {}
-        }
-    }
-    let mut emails: Vec<String> = authors
-        .iter()
-        .filter_map(|a| a["email"].as_str())
-        .map(str::to_lowercase)
-        .collect();
-    emails.sort();
-    emails.dedup();
-    if emails.is_empty() {
-        return;
-    }
-    let owners: std::collections::HashMap<String, String> =
-        match s.directory.users().owners(&emails).await {
-            Ok(o) => o.into_iter().collect(),
-            Err(e) => {
-                // The names stay plain text.
-                tracing::warn!(error = ?e, "user store unavailable");
-                return;
-            }
-        };
-    for a in authors {
-        let user = a["email"]
-            .as_str()
-            .and_then(|e| owners.get(&e.to_lowercase()));
-        if let Some(user) = user {
-            a["user"] = json!(user);
-        }
-    }
 }
