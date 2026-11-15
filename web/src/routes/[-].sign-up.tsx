@@ -40,6 +40,14 @@ function SignUp() {
     retry: false,
   })
   const passkey = options.data?.passkey && passkeySupported
+  const github = options.data?.github
+  const [method, setMethod] = useState<"password" | "passkey" | null>(null)
+  const shown = method ?? (passkey || github ? null : "password")
+
+  function choose(m: "password" | "passkey" | null) {
+    setError(null)
+    setMethod(m)
+  }
 
   async function run(
     create: () => Promise<void>,
@@ -72,11 +80,10 @@ function SignUp() {
     )
   }
 
-  function withPasskey(e: React.MouseEvent<HTMLButtonElement>) {
-    const form = e.currentTarget.form
-    const user = form?.elements.namedItem("user") as HTMLInputElement | null
-    if (!user?.reportValidity()) return
-    run(() => signUpWithPasskey(user.value), passkeyError)
+  function withPasskey(e: React.FormEvent<HTMLFormElement>) {
+    e.preventDefault()
+    const user = String(new FormData(e.currentTarget).get("user"))
+    run(() => signUpWithPasskey(user), passkeyError)
   }
 
   return (
@@ -89,8 +96,11 @@ function SignUp() {
           <CardHeader>
             <CardTitle>Create an account</CardTitle>
             <CardDescription>
-              Pick a user name and a password
-              {passkey ? ", or save a passkey instead" : ""}.
+              {shown === "passkey"
+                ? "Pick a user name, then save a passkey."
+                : shown === "password"
+                  ? "Pick a user name and a password."
+                  : "Choose how you sign in."}
             </CardDescription>
           </CardHeader>
           <CardContent>
@@ -102,94 +112,118 @@ function SignUp() {
                 an account.
               </p>
             ) : (
-              <form onSubmit={submit} className="grid gap-4">
+              <div className="grid gap-4">
                 {error && (
                   <Alert variant="destructive">
                     <AlertDescription>{error}</AlertDescription>
                   </Alert>
                 )}
-                <div className="grid gap-2">
-                  <Label htmlFor="user">User name</Label>
-                  <Input
-                    id="user"
-                    name="user"
-                    autoComplete="username"
-                    required
-                    maxLength={64}
-                    pattern="[A-Za-z0-9_][A-Za-z0-9._\-]*"
-                    title="Letters, digits, '.', '_', or '-', not starting with '.' or '-'"
-                    disabled={busy}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    Your repositories live under this name.
-                  </p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    name="password"
-                    type="password"
-                    autoComplete="new-password"
-                    required
-                    minLength={MIN_PASSWORD_CHARS}
-                    disabled={busy}
-                  />
-                  <p className="text-xs text-muted-foreground">
-                    At least {MIN_PASSWORD_CHARS} characters.
-                  </p>
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="repeat">Repeat the password</Label>
-                  <Input
-                    id="repeat"
-                    name="repeat"
-                    type="password"
-                    autoComplete="new-password"
-                    required
-                    minLength={MIN_PASSWORD_CHARS}
-                    disabled={busy}
-                  />
-                </div>
-                <Button type="submit" disabled={busy}>
-                  {busy ? "Creating…" : "Create account"}
-                </Button>
-                {passkey && (
+                {shown === null ? (
                   <>
-                    <p className="text-center text-sm text-muted-foreground">
-                      Or, without a password
-                    </p>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      disabled={busy}
-                      onClick={withPasskey}
-                    >
-                      Create account with a passkey
-                    </Button>
-                  </>
-                )}
-                {options.data.github && (
-                  <>
-                    {!passkey && (
-                      <p className="text-center text-sm text-muted-foreground">
-                        Or, without a password
-                      </p>
+                    {passkey && (
+                      <Button
+                        type="button"
+                        disabled={busy}
+                        onClick={() => choose("passkey")}
+                      >
+                        Sign up with a passkey
+                      </Button>
+                    )}
+                    {github && (
+                      <Button
+                        type="button"
+                        variant="outline"
+                        disabled={busy}
+                        asChild
+                      >
+                        <a href={githubSignInHref()}>
+                          <GithubMark />
+                          Sign up with GitHub
+                        </a>
+                      </Button>
                     )}
                     <Button
                       type="button"
                       variant="outline"
                       disabled={busy}
-                      asChild
+                      onClick={() => choose("password")}
                     >
-                      <a href={githubSignInHref()}>
-                        <GithubMark />
-                        Create account with GitHub
-                      </a>
+                      Sign up with a password
                     </Button>
                   </>
+                ) : (
+                  <form
+                    onSubmit={shown === "passkey" ? withPasskey : submit}
+                    className="grid gap-4"
+                  >
+                    <div className="grid gap-2">
+                      <Label htmlFor="user">User name</Label>
+                      <Input
+                        id="user"
+                        name="user"
+                        autoComplete="username"
+                        required
+                        maxLength={64}
+                        pattern="[A-Za-z0-9_][A-Za-z0-9._\-]*"
+                        title="Letters, digits, '.', '_', or '-', not starting with '.' or '-'"
+                        disabled={busy}
+                        autoFocus={method !== null}
+                      />
+                      <p className="text-xs text-muted-foreground">
+                        Your repositories live under this name.
+                      </p>
+                    </div>
+                    {shown === "password" && (
+                      <>
+                        <div className="grid gap-2">
+                          <Label htmlFor="password">Password</Label>
+                          <Input
+                            id="password"
+                            name="password"
+                            type="password"
+                            autoComplete="new-password"
+                            required
+                            minLength={MIN_PASSWORD_CHARS}
+                            disabled={busy}
+                          />
+                          <p className="text-xs text-muted-foreground">
+                            At least {MIN_PASSWORD_CHARS} characters.
+                          </p>
+                        </div>
+                        <div className="grid gap-2">
+                          <Label htmlFor="repeat">Repeat the password</Label>
+                          <Input
+                            id="repeat"
+                            name="repeat"
+                            type="password"
+                            autoComplete="new-password"
+                            required
+                            minLength={MIN_PASSWORD_CHARS}
+                            disabled={busy}
+                          />
+                        </div>
+                      </>
+                    )}
+                    <Button type="submit" disabled={busy}>
+                      {busy
+                        ? "Creating…"
+                        : shown === "passkey"
+                          ? "Create account with a passkey"
+                          : "Create account"}
+                    </Button>
+                    {method !== null && (
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        disabled={busy}
+                        onClick={() => choose(null)}
+                      >
+                        Other ways
+                      </Button>
+                    )}
+                  </form>
                 )}
-              </form>
+              </div>
             )}
             <p className="mt-4 text-center text-sm text-muted-foreground">
               Already have an account?{" "}
