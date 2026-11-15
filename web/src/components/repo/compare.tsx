@@ -100,8 +100,7 @@ export function ComparePage({
           <SectionHead title="Files changed" className="-mb-4" />
           <ChangedFiles
             repo={repo}
-            diff={q.data.diff}
-            truncated={q.data.truncated}
+            changes={q.data}
             oldRev={q.data.merge_base}
             newRev={q.data.head}
           />

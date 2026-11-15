@@ -16,7 +16,7 @@ export function CommitView({ repo, rev }: { repo: string; rev: string }) {
   const q = useCommit(repo, rev)
   if (q.error) return <QueryError error={q.error} />
   if (!q.data) return <Skeleton className="h-96" />
-  const { commit, diff, truncated } = q.data
+  const { commit } = q.data
   const body = commit.message.split("\n").slice(1).join("\n").trim()
 
   return (
@@ -74,8 +74,7 @@ export function CommitView({ repo, rev }: { repo: string; rev: string }) {
       <SectionHead title="Files changed" className="-mb-6" />
       <ChangedFiles
         repo={repo}
-        diff={diff}
-        truncated={truncated}
+        changes={q.data}
         oldRev={commit.parents[0]}
         newRev={commit.oid}
         note={

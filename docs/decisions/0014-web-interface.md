@@ -64,8 +64,9 @@ answers with that generation. The cache also holds objects of rejected
 pushes: `rev` is a branch, a tag, or a full ref name, or the object ID of a
 commit that a ref reaches (`for-each-ref --contains`); no other revision
 syntax. Paths contain no `.` or `..` parts. Files above 1 MiB are shown
-without contents, diffs stop at 2 MiB, trees at 5000 entries, and every
-Git command at 30 seconds.
+without contents, diffs stop at 2 MiB (since
+[decision 36](0036-large-diffs.md) the files left out load one by one),
+trees at 5000 entries, and every Git command at 30 seconds.
 
 ## Consequences
 

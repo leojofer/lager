@@ -28,6 +28,8 @@ const MAX_BLOB_BYTES: u64 = 1024 * 1024;
 /// The raw route refuses larger files.
 const MAX_RAW_BYTES: u64 = 20 * 1024 * 1024;
 pub(super) const MAX_DIFF_BYTES: usize = 2 * 1024 * 1024;
+/// The list of the files of a diff is cut after this much of Git's output.
+const MAX_DIFF_LIST_BYTES: usize = 4 * 1024 * 1024;
 const MAX_TREE_ENTRIES: usize = 5000;
 const MAX_LOG: u32 = 100;
 const GIT_TIMEOUT: Duration = Duration::from_secs(30);
@@ -91,6 +93,19 @@ pub enum Query {
     Commit {
         repo: String,
         rev: String,
+    },
+    /// The changes of one file between two commits, for the files that a
+    /// diff too large to send at once leaves out.
+    DiffFile {
+        repo: String,
+        /// Absent for a root commit.
+        #[serde(default)]
+        base: Option<String>,
+        head: String,
+        path: String,
+        /// Where a renamed file was.
+        #[serde(default)]
+        old_path: Option<String>,
     },
     // Pull requests (docs/decisions/0019-pull-requests.md), answered by
     // `super::pulls`. The ones that change something need a session.
@@ -320,6 +335,7 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::Tree { repo, .. }
         | Query::Blob { repo, .. }
         | Query::Commit { repo, .. }
+        | Query::DiffFile { repo, .. }
         | Query::Pulls { repo, .. }
         | Query::Pull { repo, .. }
         | Query::Compare { repo, .. }
@@ -338,6 +354,7 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
             | Query::Tree { .. }
             | Query::Blob { .. }
             | Query::Commit { .. }
+            | Query::DiffFile { .. }
     ) {
         return super::pulls::run(s, who, &repo, q).await;
     }
@@ -391,6 +408,21 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         Query::Commit { rev, .. } => {
             let oid = g.resolve(&rev).await?;
             g.commit(&oid).await?
+        }
+        Query::DiffFile {
+            base,
+            head,
+            path,
+            old_path,
+            ..
+        } => {
+            let base = match base {
+                Some(b) => Some(g.resolve(&b).await?),
+                None => None,
+            };
+            let head = g.resolve(&head).await?;
+            g.diff_file(base.as_deref(), &head, &path, old_path.as_deref())
+                .await?
         }
     };
     out["generation"] = json!(view.generation);
@@ -558,6 +590,60 @@ pub(super) fn parse_commits(out: &[u8]) -> Vec<Value> {
             }))
         })
         .collect()
+}
+
+/// The files of `git diff --raw --numstat -z`: every file in the raw
+/// format, then every file with its counts, in the same order. Output cut
+/// short gives the files that have both.
+fn parse_changed_files(out: &[u8]) -> Vec<Value> {
+    let text = |b: &[u8]| String::from_utf8_lossy(b).into_owned();
+    let mut tokens = out.split(|b| *b == 0);
+    // Status, old path of a rename, path.
+    let mut raw: Vec<(u8, Option<String>, String)> = vec![];
+    let mut files = vec![];
+    while let Some(t) = tokens.next() {
+        if files.is_empty() && t.first() == Some(&b':') {
+            let status = t.rsplit(|b| *b == b' ').next().and_then(|s| s.first());
+            let (Some(&status), Some(first)) = (status, tokens.next()) else {
+                break;
+            };
+            if matches!(status, b'R' | b'C') {
+                let Some(new) = tokens.next() else { break };
+                raw.push((status, Some(text(first)), text(new)));
+            } else {
+                raw.push((status, None, text(first)));
+            }
+            continue;
+        }
+        // "adds<TAB>dels<TAB>path", or for a rename an empty path and then
+        // the old and the new one; "-" counts for a binary file.
+        let mut parts = t.splitn(3, |b| *b == b'\t');
+        let (Some(adds), Some(dels), Some(path)) = (parts.next(), parts.next(), parts.next())
+        else {
+            break;
+        };
+        if path.is_empty() && (tokens.next().is_none() || tokens.next().is_none()) {
+            break;
+        }
+        let Some((status, old_path, path)) = raw.get(files.len()) else {
+            break;
+        };
+        let count = |b: &[u8]| text(b).parse::<u64>().unwrap_or(0);
+        files.push(json!({
+            "path": path,
+            "old_path": old_path,
+            "status": match status {
+                b'A' => "added",
+                b'D' => "deleted",
+                b'R' | b'C' => "renamed",
+                _ => "modified",
+            },
+            "adds": count(adds),
+            "dels": count(dels),
+            "binary": adds == b"-",
+        }));
+    }
+    files
 }
 
 /// A path inside a tree: `/`-separated names, no `.` or `..`.
@@ -1102,6 +1188,16 @@ impl Git<'_> {
         let message = commit["message"].as_str().unwrap_or_default().to_string();
         commit["subject"] = json!(message.lines().next().unwrap_or_default());
         // Merges show their changes against the first parent.
+        let (files, files_truncated) = self
+            .changed_files(&[
+                "diff-tree",
+                "-r",
+                "--root",
+                "--no-commit-id",
+                "--diff-merges=first-parent",
+                oid,
+            ])
+            .await?;
         let (diff, truncated) = self
             .run_limited(
                 &[
@@ -1121,8 +1217,65 @@ impl Git<'_> {
             .await?;
         Ok(json!({
             "commit": commit,
+            "files": files,
+            "files_truncated": files_truncated,
             "diff": String::from_utf8_lossy(&diff),
             "truncated": truncated,
+        }))
+    }
+
+    /// Every file that a diff changes, with its counts of changed lines:
+    /// the patch itself may be cut. `diff`: the Git command and its
+    /// revisions. True if the list is cut too.
+    pub(super) async fn changed_files(&self, diff: &[&str]) -> Result<(Value, bool), ReadError> {
+        let mut args = vec![
+            diff[0],
+            "--raw",
+            "--numstat",
+            "-z",
+            "--find-renames",
+            "--no-color",
+            "--no-ext-diff",
+            "--no-textconv",
+        ];
+        args.extend(&diff[1..]);
+        let (out, truncated) = self.run_limited(&args, MAX_DIFF_LIST_BYTES).await?;
+        let mut files = parse_changed_files(&out);
+        if truncated {
+            // The last one may be cut.
+            files.pop();
+        }
+        Ok((json!(files), truncated))
+    }
+
+    /// The patch of one file between `base`, or nothing for a root commit,
+    /// and `head`.
+    async fn diff_file(
+        &self,
+        base: Option<&str>,
+        head: &str,
+        path: &str,
+        old_path: Option<&str>,
+    ) -> Result<Value, ReadError> {
+        let path = check_path(path)?;
+        if path.is_empty() {
+            return Err(ReadError::bad("path required"));
+        }
+        let old_path = old_path.map(check_path).transpose()?;
+        // Paths are names, not patterns.
+        let mut args = vec!["--literal-pathspecs"];
+        match base {
+            Some(_) => args.extend(["diff", "--patch", "--find-renames"]),
+            None => args.extend(["diff-tree", "-r", "--root", "--no-commit-id", "--patch"]),
+        }
+        args.extend(["--no-color", "--no-ext-diff", "--no-textconv"]);
+        args.extend(base);
+        args.extend([head, "--", path]);
+        args.extend(old_path.filter(|p| !p.is_empty() && *p != path));
+        let (diff, too_large) = self.run_limited(&args, MAX_DIFF_BYTES).await?;
+        Ok(json!({
+            "diff": if too_large { "".into() } else { String::from_utf8_lossy(&diff) },
+            "too_large": too_large,
         }))
     }
 }

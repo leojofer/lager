@@ -369,6 +369,7 @@ async fn compare(
     let mut commits = parse_commits(&out);
     let more = commits.len() > MAX_COMMITS;
     commits.truncate(MAX_COMMITS);
+    let (files, files_truncated) = g.changed_files(&["diff", &merge_base, &head]).await?;
     let (diff, truncated) = g
         .run_limited(
             &[
@@ -390,6 +391,8 @@ async fn compare(
         "merge_base": merge_base,
         "commits": commits,
         "more": more,
+        "files": files,
+        "files_truncated": files_truncated,
         "diff": String::from_utf8_lossy(&diff),
         "truncated": truncated,
         "generation": view.generation,
