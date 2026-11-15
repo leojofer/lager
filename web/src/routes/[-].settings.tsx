@@ -65,7 +65,7 @@ function Settings() {
         ) : (
           <div className="grid gap-8">
             <PageTitle>Settings</PageTitle>
-            <div className="flex flex-col gap-8 lg:flex-row lg:gap-12">
+            <div className="flex min-w-0 flex-col gap-8 lg:flex-row lg:gap-12">
               <aside className="lg:w-48 lg:shrink-0">
                 <nav className="flex gap-1 overflow-x-auto lg:flex-col lg:gap-5">
                   {GROUPS.map((g) => (
