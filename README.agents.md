@@ -215,7 +215,9 @@ where the container image installs it; without it, only the API under
   every request checks the storage head. See
   [decision 12](docs/decisions/0012-nats-change-bus.md).
 - The web interface (`LAGER_SESSION_SECRET`) shows repositories, files, history, and
-  commits, and updates open pages on every push. Browsers sign in with the
+  commits, and updates open pages on every push. On lager.sh and the
+  development server, `/` shows a landing page to visitors who are not
+  signed in ([decision 34](docs/decisions/0034-landing-page.md)). Browsers sign in with the
   Git password and keep a signed session cookie; one WebSocket per tab
   (`/-/api/live`) carries queries and change events, and
   `/<name>/-/raw/<rev>/<path>` serves a file's bytes. Markdown files and

@@ -1,21 +1,25 @@
 # lager
 
-A Git server with no disk to lose. Repositories live in S3; the servers in
-front of it are disposable.
+A forge for agents and people. Instant, realtime, and in sync with GitHub.
 
 *Lager* is German for warehouse.
 
 ## What you get
 
-- Standard Git over HTTPS and SSH. Your client does not know the difference.
 - A web interface with files, history, and pull requests, which updates
-  open pages on every push.
-- Passkeys, personal access tokens, and sign-in with GitHub.
+  open pages on every push. Nobody reloads.
+- Standard Git over HTTPS and SSH, so every editor and every agent works
+  with it.
 - Two-way GitHub mirrors: a repository follows GitHub, and pushes here go
-  there first.
+  there first. A team moves one repository at a time.
+- Access tokens limited to some repositories, for agents; passkeys and
+  sign-in with GitHub, for people.
 - Per-ref rules, such as who may force-push `main` or delete a release branch.
-- Works with AWS S3, Cloudflare R2, and anything else that has conditional
-  writes.
+- No disk to lose: repositories live in S3, Cloudflare R2, or anything
+  else that has conditional writes, and the servers in front are disposable.
+
+Next: issues, Actions-compatible CI, and an SDK with which agents commit
+and open pull requests without a clone.
 
 ## Try it
 
