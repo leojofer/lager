@@ -49,5 +49,8 @@ default.
 - The settings requests over plain HTTP (access tokens, SSH keys, email
   addresses, passkeys) and the messages of the live connection itself
   still have hand-written types on both sides.
-- Author links are still added to the JSON of an answer by field name
-  (`commit`, `last_commit`, `commits`), after the typed answer is written.
+- Commits read from Git are `Unlinked` until `Git::link` looks up their
+  authors among the users, so an answer cannot hold commits whose authors
+  were not looked up.
+- The declarations in `wire.ts` are sorted by name: `ts-rs` visits the
+  types in an order that changes from build to build.
