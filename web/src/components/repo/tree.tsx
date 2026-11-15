@@ -28,14 +28,16 @@ export function TreeView({
   const tree = useTree(repo, rev, path)
   const readme = tree.data && findReadme(tree.data.entries)
   return (
-    <div className="grid grid-cols-1 gap-8 px-4 py-4 md:px-6">
+    <div>
       {tree.error ? (
-        <QueryError error={tree.error} />
+        <div className="p-4 md:p-6">
+          <QueryError error={tree.error} />
+        </div>
       ) : !tree.data ? (
-        <Skeleton className="h-72" />
+        <Skeleton className="m-4 h-72 md:m-6" />
       ) : (
         <div>
-          <ul className="text-[13px] [&>li+li]:border-t [&>li+li]:border-hairline">
+          <ul className="text-[13px] [&>li]:border-b [&>li]:border-hairline">
             {path && (
               <li>
                 <Link
@@ -48,7 +50,7 @@ export function TreeView({
                       path.split("/").slice(0, -1).join("/")
                     ),
                   }}
-                  className="flex h-9 items-center px-2 text-muted-foreground hover:bg-muted/50"
+                  className="flex h-9 items-center px-3 text-muted-foreground hover:bg-muted/50 md:px-4"
                 >
                   ..
                 </Link>
@@ -59,7 +61,7 @@ export function TreeView({
             ))}
           </ul>
           {tree.data.truncated && (
-            <p className="border-t border-hairline px-2 py-2 text-xs text-muted-foreground">
+            <p className="border-b border-hairline px-3 py-2 text-xs text-muted-foreground md:px-4">
               Only the first {tree.data.entries.length} entries are shown.
             </p>
           )}
@@ -118,7 +120,7 @@ function Entry({
   )
   if (entry.kind === "submodule") {
     return (
-      <li className="flex h-9 items-center px-2">
+      <li className="flex h-9 items-center px-3 md:px-4">
         {name}
         <span className="ml-auto font-mono text-xs text-muted-foreground">
           @ {entry.oid.slice(0, 8)}
@@ -138,7 +140,7 @@ function Entry({
             join(dir, entry.name)
           ),
         }}
-        className="flex h-9 items-center px-2 hover:bg-muted/50"
+        className="flex h-9 items-center px-3 hover:bg-muted/50 md:px-4"
       >
         {name}
         {entry.size !== null && (
@@ -163,8 +165,8 @@ export function Readme({
   const blob = useBlob(repo, rev, path)
   if (!blob.data?.text) return null
   return (
-    <div>
-      <h2 className="border-b border-hairline pb-2 label-caps">
+    <div className="mt-8 border-t border-hairline">
+      <h2 className="border-b border-hairline px-3 py-2 label-caps md:px-4">
         {path.split("/").pop()}
       </h2>
       {isMarkdown(path) ? (
