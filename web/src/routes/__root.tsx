@@ -144,7 +144,7 @@ function Root() {
               scrolls on its own. */}
           <SidebarInset
             data-scroll-restoration-id="main"
-            className="min-w-0 md:m-(--frame-gap) md:ml-0 md:h-(--frame-height) md:overflow-y-auto md:rounded-(--frame-radius) md:shadow-xs"
+            className="min-w-0 md:m-(--frame-gap) md:ml-0 md:h-(--frame-height) md:overflow-y-auto md:rounded-(--frame-radius)"
           >
             <Outlet />
           </SidebarInset>
