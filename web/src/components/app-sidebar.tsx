@@ -254,7 +254,7 @@ function RepoItem({
           )}
         </span>
         <span className="truncate">{label}</span>
-        {open ? <Count>{open}</Count> : repo.mirror && <Count>mirror</Count>}
+        {open ? <Count>{open}</Count> : null}
       </Link>
       {loc && <RepoSections loc={loc} open={open} />}
     </>
