@@ -2657,7 +2657,7 @@ dependencies = [
 
 [[package]]
 name = "lager-cli"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "clap",
@@ -2670,7 +2670,7 @@ dependencies = [
 
 [[package]]
 name = "lager-core"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-trait",
@@ -2693,7 +2693,7 @@ dependencies = [
 
 [[package]]
 name = "lager-server"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "anyhow",
  "async-compression",
