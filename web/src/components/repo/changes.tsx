@@ -1,14 +1,32 @@
-import type { FileDiffContentsLoader } from "@pierre/diffs"
+import type { FileDiffContentsLoader, FileDiffMetadata } from "@pierre/diffs"
 import { FileDiff as PatchFileDiff } from "@pierre/diffs/react"
-import { useCallback, useEffect, useMemo, useRef, useState } from "react"
+import { Link } from "@tanstack/react-router"
+import { memo, useCallback, useEffect, useMemo, useRef, useState } from "react"
 import { createPortal } from "react-dom"
 
-import { fetchBlob } from "@/lib/api"
+import {
+  fetchBlob,
+  useDiffFile,
+  type ChangedFile,
+  type Changes,
+} from "@/lib/api"
+import { href } from "@/lib/paths"
+import { Button } from "@/components/ui/button"
+import { Skeleton } from "@/components/ui/skeleton"
 import { Tabs, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { codeOptions, codeStyle, parseDiff, type DiffFile } from "./diff"
+import { codeOptions, codeStyle, headerOnly, parsePatch } from "./diff"
 import { DiffTree } from "./diff-tree"
 
 type DiffStyle = "unified" | "split"
+
+/** A file with more changed lines shows them on request. */
+const LARGE_LINES = 2000
+/** Files this far outside the view are drawn already, in pixels. */
+const AHEAD = 1500
+/** The heights that stand in for a file not drawn yet, in pixels. */
+const HEADER_HEIGHT = 44
+const LINE_HEIGHT = 20
+const NOTE_HEIGHT = 56
 
 function useDiffStyle() {
   const [style, setStyle] = useState<DiffStyle>(() =>
@@ -22,23 +40,22 @@ function useDiffStyle() {
 }
 
 /**
- * The files of a patch between two revisions, with a count of changed
- * lines. Expanding unchanged lines loads both whole files. With `tree`, a
- * tree of the files, drawn into that element elsewhere on the page, leads
- * to each.
+ * The files changed between two revisions, with a count of changed lines.
+ * A file is drawn when it comes near the view, and one that the patch
+ * leaves out loads then. Expanding unchanged lines loads both whole
+ * files. With `tree`, a tree of the files, drawn into that element
+ * elsewhere on the page, leads to each.
  */
 export function ChangedFiles({
   repo,
-  diff,
-  truncated,
+  changes,
   oldRev,
   newRev,
   note,
   tree,
 }: {
   repo: string
-  diff: string
-  truncated: boolean
+  changes: Changes
   /** Absent for a root commit. */
   oldRev: string | undefined
   newRev: string
@@ -47,7 +64,13 @@ export function ChangedFiles({
   /** Where the tree of the files goes; absent for no tree. */
   tree?: HTMLElement | null
 }) {
-  const files = useMemo(() => parseDiff(diff), [diff])
+  const { files } = changes
+  const patches = useMemo(() => {
+    const parsed = parsePatch(changes.diff)
+    // A cut patch ends inside its last file.
+    if (changes.truncated) parsed.pop()
+    return new Map(parsed.map((d) => [d.name, d]))
+  }, [changes.diff, changes.truncated])
   const [diffStyle, setDiffStyle] = useDiffStyle()
   const loadDiffFiles = useCallback<FileDiffContentsLoader>(
     async (d) => {
@@ -71,6 +94,7 @@ export function ChangedFiles({
 
   const views = useRef<(HTMLDivElement | null)[]>([])
   const [current, setCurrent] = useCurrentFile(views, files)
+  const near = useNear(views, files)
 
   const summary = (
     <>
@@ -96,7 +120,7 @@ export function ChangedFiles({
     <div className="grid grid-cols-1 gap-6">
       {files.map((f, i) => (
         <div
-          key={i}
+          key={f.path}
           ref={(el) => {
             views.current[i] = el
           }}
@@ -104,15 +128,20 @@ export function ChangedFiles({
           className="scroll-mt-14"
         >
           <FileView
+            repo={repo}
             file={f}
+            patch={patches.get(f.path)}
+            near={near.has(i)}
+            oldRev={oldRev}
+            newRev={newRev}
             diffStyle={diffStyle}
             loadDiffFiles={loadDiffFiles}
           />
         </div>
       ))}
-      {truncated && (
+      {changes.files_truncated && (
         <p className="rounded-lg border border-dashed p-6 text-center text-sm text-muted-foreground">
-          The diff is too large to show completely.
+          More files changed than can be listed.
         </p>
       )}
     </div>
@@ -142,7 +171,7 @@ export function ChangedFiles({
 /** The index of the topmost file diff in view, until another is chosen. */
 function useCurrentFile(
   views: React.RefObject<(HTMLDivElement | null)[]>,
-  files: DiffFile[]
+  files: ChangedFile[]
 ) {
   const [current, setCurrent] = useState<number>()
   useEffect(() => {
@@ -167,36 +196,154 @@ function useCurrentFile(
   return [current, setCurrent] as const
 }
 
-function FileView({
+/** The element whose scrolling moves `el`; null for the page. */
+function scroller(el: HTMLElement) {
+  for (let p = el.parentElement; p; p = p.parentElement) {
+    if (/auto|scroll/.test(getComputedStyle(p).overflowY)) return p
+  }
+  return null
+}
+
+/** The indices of the files that have come near the view. */
+function useNear(
+  views: React.RefObject<(HTMLDivElement | null)[]>,
+  files: ChangedFile[]
+) {
+  const [near, setNear] = useState<ReadonlySet<number>>(() => new Set())
+  useEffect(() => {
+    setNear(new Set())
+    const els = views.current.slice(0, files.length)
+    const first = els.find((el) => el)
+    if (!first) return
+    const io = new IntersectionObserver(
+      (entries) => {
+        const seen = entries.filter((e) => e.isIntersecting)
+        if (seen.length === 0) return
+        setNear((old) => {
+          const next = new Set(old)
+          for (const e of seen) {
+            next.add(views.current.indexOf(e.target as HTMLDivElement))
+            // A file stays drawn.
+            io.unobserve(e.target)
+          }
+          return next
+        })
+      },
+      { root: scroller(first), rootMargin: `${AHEAD}px 0px` }
+    )
+    for (const el of els) {
+      if (el) io.observe(el)
+    }
+    return () => io.disconnect()
+  }, [views, files])
+  return near
+}
+
+const FileView = memo(function FileView({
+  repo,
   file,
+  patch,
+  near,
+  oldRev,
+  newRev,
   diffStyle,
   loadDiffFiles,
 }: {
-  file: DiffFile
+  repo: string
+  file: ChangedFile
+  /** The file's part of the patch, if the patch has it. */
+  patch: FileDiffMetadata | undefined
+  near: boolean
+  oldRev: string | undefined
+  newRev: string
   diffStyle: DiffStyle
   loadDiffFiles: FileDiffContentsLoader
 }) {
-  const { diff } = file
+  const large = file.adds + file.dels > LARGE_LINES
+  const [open, setOpen] = useState(!large)
+  const show = near && open && !file.binary
+  const q = useDiffFile(repo, oldRev, newRev, file, show && !patch)
+  const loaded = useMemo(
+    () =>
+      q.data && !q.data.too_large ? parsePatch(q.data.diff)[0] : undefined,
+    [q.data]
+  )
+  const diff = show ? (patch ?? loaded) : undefined
+  const header = useMemo(() => headerOnly(file), [file])
   // The options must keep their identity: new ones render the diff again.
   const options = useMemo(
     () => ({ ...codeOptions, diffStyle, loadDiffFiles }),
     [diffStyle, loadDiffFiles]
   )
-  const note = file.binary
-    ? "Binary file changed."
-    : diff.hunks.length > 0
-      ? null
-      : diff.type === "rename-pure"
-        ? "File renamed without changes."
-        : diff.prevMode && diff.prevMode !== diff.mode
-          ? `File mode changed from ${diff.prevMode} to ${diff.mode}.`
-          : "No content changes."
+  if (!near) {
+    const lines =
+      !open || file.binary
+        ? 0
+        : patch
+          ? diffStyle === "split"
+            ? patch.splitLineCount
+            : patch.unifiedLineCount
+          : file.adds + file.dels
+    return (
+      <div
+        className="rounded-[9px] border"
+        style={{
+          height: HEADER_HEIGHT + (lines ? lines * LINE_HEIGHT : NOTE_HEIGHT),
+        }}
+      />
+    )
+  }
+  const lines = file.adds + file.dels
+  const note = file.binary ? (
+    "Binary file changed."
+  ) : !open ? (
+    <span className="flex items-center gap-3">
+      {lines.toLocaleString()} changed lines.
+      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
+        Show
+      </Button>
+    </span>
+  ) : q.error ? (
+    <span className="text-destructive">{q.error.message}</span>
+  ) : q.data?.too_large ? (
+    <span className="flex items-center gap-3">
+      This diff is too large to show.
+      {file.status !== "deleted" && (
+        <Button asChild variant="outline" size="sm">
+          <Link
+            to="/$"
+            params={{ _splat: href(repo, "blob", newRev, file.path) }}
+          >
+            View file
+          </Link>
+        </Button>
+      )}
+    </span>
+  ) : !diff ? (
+    q.data ? (
+      "No content changes."
+    ) : (
+      <Skeleton className="h-16" />
+    )
+  ) : diff.hunks.length > 0 ? null : diff.type === "rename-pure" ? (
+    "File renamed without changes."
+  ) : diff.prevMode && diff.prevMode !== diff.mode ? (
+    `File mode changed from ${diff.prevMode} to ${diff.mode}.`
+  ) : (
+    "No content changes."
+  )
   return (
     <div className="overflow-hidden rounded-[9px] border">
-      <PatchFileDiff fileDiff={diff} options={options} style={codeStyle} />
+      <PatchFileDiff
+        // A new one for the changes: the header alone is another diff.
+        key={diff ? "diff" : "header"}
+        fileDiff={diff ?? header}
+        options={options}
+        style={codeStyle}
+      />
       {note && (
-        <p className="border-t p-4 text-sm text-muted-foreground">{note}</p>
+        <div className="border-t p-4 text-sm text-muted-foreground">{note}</div>
       )}
     </div>
   )
-}
+})

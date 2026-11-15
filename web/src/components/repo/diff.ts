@@ -4,30 +4,33 @@
 import { parsePatchFiles, type FileDiffMetadata } from "@pierre/diffs"
 import type { CSSProperties } from "react"
 
-export interface DiffFile {
-  diff: FileDiffMetadata
-  binary: boolean
-  adds: number
-  dels: number
+import type { ChangedFile } from "@/lib/api"
+
+/** Splits `git diff --patch` output into files. */
+export function parsePatch(patch: string): FileDiffMetadata[] {
+  return parsePatchFiles(patch).flatMap((p) => p.files)
 }
 
-/** Splits `git diff-tree --patch` output into files. */
-export function parseDiff(patch: string): DiffFile[] {
-  // The parser keeps no mark for binary files, so find them in the patch.
-  const binary = new Set<string>()
-  for (const m of patch.matchAll(
-    /^Binary files (?:a\/(.*)|\/dev\/null) and (?:b\/(.*)|\/dev\/null) differ$/gm
-  )) {
-    binary.add(m[2] ?? m[1])
+/** A file without its changes: only the header of its diff. */
+export function headerOnly(file: ChangedFile): FileDiffMetadata {
+  return {
+    name: file.path,
+    prevName: file.old_path ?? undefined,
+    type: (
+      {
+        added: "new",
+        deleted: "deleted",
+        modified: "change",
+        renamed: file.adds + file.dels > 0 ? "rename-changed" : "rename-pure",
+      } as const
+    )[file.status],
+    hunks: [],
+    splitLineCount: 0,
+    unifiedLineCount: 0,
+    isPartial: true,
+    deletionLines: [],
+    additionLines: [],
   }
-  return parsePatchFiles(patch).flatMap((p) =>
-    p.files.map((diff) => ({
-      diff,
-      binary: binary.has(diff.name),
-      adds: diff.hunks.reduce((n, h) => n + h.additionLines, 0),
-      dels: diff.hunks.reduce((n, h) => n + h.deletionLines, 0),
-    }))
-  )
 }
 
 /** Options shared by diffs and files: system color scheme, the app's font. */

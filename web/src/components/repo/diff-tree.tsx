@@ -8,7 +8,7 @@ import {
 } from "lucide-react"
 
 import { cn } from "@/lib/utils"
-import type { DiffFile } from "./diff"
+import type { ChangedFile } from "@/lib/api"
 import { indent, row } from "./file-tree"
 
 interface Dir {
@@ -24,16 +24,16 @@ interface Leaf {
   name: string
   /** The file's index in the diff. */
   index: number
-  file: DiffFile
+  file: ChangedFile
 }
 
 type Entry = Dir | Leaf
 
 /** The changed files as directories, sorted as in a file manager. */
-function build(files: DiffFile[]): Entry[] {
+function build(files: ChangedFile[]): Entry[] {
   const root: Dir = { kind: "dir", name: "", path: "", children: [] }
   files.forEach((file, index) => {
-    const parts = file.diff.name.split("/")
+    const parts = file.path.split("/")
     let dir = root
     for (const part of parts.slice(0, -1)) {
       const path = dir.path ? `${dir.path}/${part}` : part
@@ -68,23 +68,14 @@ function build(files: DiffFile[]): Entry[] {
 }
 
 const icons = {
-  new: { icon: FilePlus, className: "text-added", label: "Added" },
+  added: { icon: FilePlus, className: "text-added", label: "Added" },
   deleted: { icon: FileMinus, className: "text-removed", label: "Deleted" },
-  "rename-pure": {
-    icon: FileSymlink,
-    className: "text-label",
-    label: "Renamed",
-  },
-  "rename-changed": {
-    icon: FileSymlink,
-    className: "text-label",
-    label: "Renamed",
-  },
-  change: { icon: FilePen, className: "text-label", label: "Changed" },
+  renamed: { icon: FileSymlink, className: "text-label", label: "Renamed" },
+  modified: { icon: FilePen, className: "text-label", label: "Changed" },
 }
 
 /**
- * The files of a patch as a tree; following a file scrolls to its diff.
+ * The files of a diff as a tree; following a file scrolls to its diff.
  * Every directory starts open.
  */
 export function DiffTree({
@@ -92,7 +83,7 @@ export function DiffTree({
   current,
   onSelect,
 }: {
-  files: DiffFile[]
+  files: ChangedFile[]
   /** The index of the file in view. */
   current: number | undefined
   onSelect: (index: number) => void
@@ -158,12 +149,9 @@ function FileRow({
   active: boolean
   onSelect: (index: number) => void
 }) {
-  const { diff, adds, dels } = leaf.file
-  const kind = icons[diff.type]
-  const title =
-    diff.prevName && diff.prevName !== diff.name
-      ? `${kind.label} from ${diff.prevName}`
-      : kind.label
+  const { status, old_path, adds, dels } = leaf.file
+  const kind = icons[status]
+  const title = old_path ? `${kind.label} from ${old_path}` : kind.label
   return (
     <button
       type="button"

@@ -13,7 +13,7 @@ import {
   RotateCcw,
   Upload,
 } from "lucide-react"
-import { useEffect, useMemo, useState, type ReactNode } from "react"
+import { useEffect, useState, type ReactNode } from "react"
 
 import {
   requestId,
@@ -51,7 +51,6 @@ import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
 import { Avatar } from "./avatar"
 import { ChangedFiles } from "./changes"
-import { parseDiff } from "./diff"
 import { MessageView } from "./markdown"
 import { MessageEditor } from "./message-editor"
 import { PullStateBadge } from "./pulls"
@@ -72,7 +71,7 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
   const d = q.data
   // The changes come from the repository, not the database.
   const cmp = useCompare(repo, d?.base ?? "", d?.head ?? "")
-  const files = useMemo(() => cmp.data && parseDiff(cmp.data.diff), [cmp.data])
+  const files = cmp.data?.files
   const [tree, setTree] = useState<HTMLElement | null>(null)
   const loaded = !!cmp.data
   useEffect(() => {
@@ -219,8 +218,7 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
           ) : (
             <ChangedFiles
               repo={repo}
-              diff={cmp.data.diff}
-              truncated={cmp.data.truncated}
+              changes={cmp.data}
               oldRev={cmp.data.merge_base}
               newRev={cmp.data.head}
               tree={tree}

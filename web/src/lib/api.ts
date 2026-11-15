@@ -91,11 +91,29 @@ export interface Log {
   more: boolean
 }
 
-export interface CommitDetail {
-  generation: number
-  commit: Commit & { message: string }
+export interface ChangedFile {
+  path: string
+  /** Where a renamed file was. */
+  old_path: string | null
+  status: "added" | "deleted" | "modified" | "renamed"
+  adds: number
+  dels: number
+  binary: boolean
+}
+
+/** The changes between two commits. */
+export interface Changes {
+  /** Every changed file, unless `files_truncated`. */
+  files: ChangedFile[]
+  files_truncated: boolean
+  /** The patch, which ends early if `truncated`; `diff_file` has the rest. */
   diff: string
   truncated: boolean
+}
+
+export interface CommitDetail extends Changes {
+  generation: number
+  commit: Commit & { message: string }
 }
 
 // Pull requests (docs/decisions/0019-pull-requests.md).
@@ -180,7 +198,7 @@ export interface PullDetail {
   can_close: boolean
 }
 
-export interface Comparison {
+export interface Comparison extends Changes {
   generation: number
   base: string
   head: string
@@ -188,8 +206,6 @@ export interface Comparison {
   /** Newest first. */
   commits: Commit[]
   more: boolean
-  diff: string
-  truncated: boolean
 }
 
 export const queryClient = new QueryClient({
@@ -392,6 +408,34 @@ export function useCompare(repo: string, base: string, head: string) {
     queryFn: () =>
       live.request<Comparison>({ op: "compare", repo, base, head }),
     enabled: base !== "" && head !== "",
+  })
+}
+
+/**
+ * The patch of one file between two commits (`base` absent for a root
+ * commit), for the files that the patch of the whole diff leaves out.
+ */
+export function useDiffFile(
+  repo: string,
+  base: string | undefined,
+  head: string,
+  file: ChangedFile,
+  enabled: boolean
+) {
+  return useQuery({
+    queryKey: ["repo", repo, "diff_file", base ?? "", head, file.path],
+    queryFn: () =>
+      live.request<{ diff: string; too_large: boolean }>({
+        op: "diff_file",
+        repo,
+        base,
+        head,
+        path: file.path,
+        old_path: file.old_path ?? undefined,
+      }),
+    enabled,
+    // Commits never change.
+    staleTime: Infinity,
   })
 }
 
