@@ -195,4 +195,8 @@
   a[href] {
     cursor: default;
   }
+  /* Set before the first paint where the landing page replaces the frame. */
+  html.landing body {
+    visibility: hidden;
+  }
 }

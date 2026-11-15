@@ -4,13 +4,14 @@ import {
   Outlet,
   Scripts,
   createRootRoute,
+  useLocation,
 } from "@tanstack/react-router"
 import { QueryClientProvider } from "@tanstack/react-query"
-import { useEffect, useState } from "react"
+import { useEffect, useState, useSyncExternalStore } from "react"
 
 import appCss from "../styles.css?url"
 import logo from "../assets/lager.svg?url"
-import { queryClient } from "@/lib/api"
+import { queryClient, useLive } from "@/lib/api"
 import { live } from "@/lib/live"
 import { TooltipProvider } from "@/components/ui/tooltip"
 import { SidebarInset, SidebarProvider } from "@/components/ui/sidebar"
@@ -18,6 +19,7 @@ import { AppSidebar } from "@/components/app-sidebar"
 import { PageBody, PageHeader } from "@/components/frame"
 import { Omnibar } from "@/components/omnibar"
 import { CreateRepoDialog } from "@/components/create-repo-dialog"
+import { Landing } from "@/components/landing"
 
 // Follows the system color scheme before the first paint.
 const theme = `(() => {
@@ -27,12 +29,42 @@ const theme = `(() => {
   m.addEventListener("change", set)
 })()`
 
+// The landing page (docs/decisions/0034-landing-page.md) is for lager.sh and
+// for development; other installations list their public repositories at /.
+const LANDING_HOSTS = "(^|\\.)lager\\.sh$"
+// Set while a user is signed in, so that the next visit knows which page to
+// draw before the live connection answers.
+const SIGNED_IN = "lager:signed-in"
+
+function landingHere() {
+  return (
+    location.pathname === "/" &&
+    (import.meta.env.DEV || new RegExp(LANDING_HOSTS).test(location.hostname))
+  )
+}
+
+// The shell holds the app frame; hide it before the first paint where the
+// landing page replaces it.
+const landing = `(() => {
+  if (
+    location.pathname === "/" &&
+    (${import.meta.env.DEV} || new RegExp("${LANDING_HOSTS}").test(location.hostname)) &&
+    !localStorage.getItem("${SIGNED_IN}")
+  )
+    document.documentElement.classList.add("landing")
+})()`
+
 export const Route = createRootRoute({
   head: () => ({
     meta: [
       { charSet: "utf-8" },
       { name: "viewport", content: "width=device-width, initial-scale=1" },
       { title: "lager" },
+      {
+        name: "description",
+        content:
+          "A forge for agents and people. Instant, realtime, and in sync with GitHub.",
+      },
     ],
     links: [
       { rel: "stylesheet", href: appCss },
@@ -49,6 +81,7 @@ function Shell({ children }: { children: React.ReactNode }) {
     <html lang="en" suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: theme }} />
+        <script dangerouslySetInnerHTML={{ __html: landing }} />
         <HeadContent />
       </head>
       <body>
@@ -64,6 +97,35 @@ function Root() {
   const [search, setSearch] = useState(false)
   const [createRepo, setCreateRepo] = useState(false)
   const openSearch = () => setSearch(true)
+
+  const state = useLive()
+  useEffect(() => {
+    if (!state?.ready) return
+    if (state.user) localStorage.setItem(SIGNED_IN, "1")
+    else localStorage.removeItem(SIGNED_IN)
+  }, [state?.ready, state?.user])
+  // False while hydrating, where the page must match the shell.
+  const hydrated = useSyncExternalStore(
+    () => () => {},
+    () => true,
+    () => false
+  )
+  const pathname = useLocation({ select: (l) => l.pathname })
+  const showLanding =
+    hydrated &&
+    pathname === "/" &&
+    landingHere() &&
+    (state?.ready ? !state.user : !localStorage.getItem(SIGNED_IN))
+  useEffect(() => {
+    if (hydrated) document.documentElement.classList.remove("landing")
+  }, [hydrated])
+
+  if (showLanding)
+    return (
+      <QueryClientProvider client={queryClient}>
+        <Landing />
+      </QueryClientProvider>
+    )
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
