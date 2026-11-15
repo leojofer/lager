@@ -114,6 +114,21 @@
   --sidebar-ring: #2b63e6;
 }
 
+/* On desktop the main area is a panel inset from the window. Its radius is
+   concentric with the corners of a macOS Golden Gate window (20px): 20px -
+   the gap. */
+:root {
+  --frame-gap: 0px;
+  --frame-radius: 0px;
+  --frame-height: calc(100svh - 2 * var(--frame-gap));
+}
+@media (width >= 48rem) {
+  :root {
+    --frame-gap: 8px;
+    --frame-radius: 12px;
+  }
+}
+
 .dark {
   color-scheme: dark;
   --background: #141417;

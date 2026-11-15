@@ -87,9 +87,9 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
   const dels = files?.reduce((n, f) => n + f.dels, 0) ?? 0
 
   return (
-    <div className="flex min-h-[calc(100svh-3rem)] flex-col lg:flex-row">
+    <div className="flex min-h-[calc(var(--frame-height)-3rem)] flex-col lg:flex-row">
       <aside className="order-last shrink-0 border-t border-hairline lg:order-none lg:w-75 lg:border-t-0 lg:border-r">
-        <div className="grid grid-cols-1 gap-8 px-4 py-6 lg:sticky lg:top-12 lg:max-h-[calc(100svh-3rem)] lg:overflow-y-auto">
+        <div className="grid grid-cols-1 gap-8 px-4 py-6 lg:sticky lg:top-12 lg:max-h-[calc(var(--frame-height)-3rem)] lg:overflow-y-auto">
           <section id="commits" className="scroll-mt-14">
             <div className="flex items-center gap-2 px-1 pb-3">
               <h2 className="label-caps">Commits</h2>

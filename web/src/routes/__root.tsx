@@ -130,13 +130,22 @@ function Root() {
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
         {/* Always open on desktop; phones still open it as a sheet. */}
-        <SidebarProvider open onOpenChange={() => {}}>
+        <SidebarProvider
+          open
+          onOpenChange={() => {}}
+          className="bg-sidebar md:h-svh md:overflow-hidden"
+        >
           <AppSidebar
             onSearch={openSearch}
             onCreateRepo={() => setCreateRepo(true)}
           />
-          {/* Each page draws its own header above its content. */}
-          <SidebarInset className="min-w-0">
+          {/* Each page draws its own header above its content. On desktop the
+              main area is a rounded panel inset from the window, which
+              scrolls on its own. */}
+          <SidebarInset
+            data-scroll-restoration-id="main"
+            className="min-w-0 md:m-(--frame-gap) md:ml-0 md:h-(--frame-height) md:overflow-y-auto md:rounded-(--frame-radius) md:shadow-xs md:ring-1 md:ring-sidebar-border"
+          >
             <Outlet />
           </SidebarInset>
           <Omnibar
