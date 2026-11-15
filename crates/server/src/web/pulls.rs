@@ -95,6 +95,9 @@ pub async fn run(
             Query::PullReopen { number, .. } => {
                 return changed(github.pull_set_open(repo, who, number, true).await?);
             }
+            Query::PullRetarget { number, target, .. } => {
+                return changed(github.pull_retarget(repo, who, number, &target).await?);
+            }
             Query::PullMerge {
                 number,
                 head,
@@ -151,6 +154,9 @@ pub async fn run(
         }
         Query::PullClose { number, .. } => changed(pulls.set_open(repo, who, number, false).await?),
         Query::PullReopen { number, .. } => changed(pulls.set_open(repo, who, number, true).await?),
+        Query::PullRetarget { number, target, .. } => {
+            changed(pulls.retarget(repo, who, number, &target).await?)
+        }
         Query::PullMerge {
             number,
             head,

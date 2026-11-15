@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
+  ArrowRightLeft,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -8,6 +9,7 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequestClosed,
+  Plus,
   RotateCcw,
   Upload,
 } from "lucide-react"
@@ -18,6 +20,7 @@ import {
   useCompare,
   useLive,
   usePull,
+  useRefs,
   usePullChange,
   type Commit,
   type Pull,
@@ -37,6 +40,13 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
 import { Avatar } from "./avatar"
@@ -87,6 +97,8 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
   const adds = files?.reduce((n, f) => n + f.adds, 0) ?? 0
   const dels = files?.reduce((n, f) => n + f.dels, 0) ?? 0
   const stacked = d.stack.length > 1
+  // A new pull request on top of this one, or of its stack.
+  const add = pull.state === "open" && d.can_comment
 
   return (
     <div className="flex min-h-[calc(var(--frame-height)-3rem)] shrink-0 flex-col lg:flex-row">
@@ -114,7 +126,12 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
               )}
             </div>
             {stacked ? (
-              <LayerStack repo={repo} layers={d.stack} current={pull.number}>
+              <LayerStack
+                repo={repo}
+                layers={d.stack}
+                current={pull.number}
+                add={add}
+              >
                 {cmp.error ? (
                   <QueryError error={cmp.error} />
                 ) : !commits ? (
@@ -138,6 +155,7 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
                 more={!!cmp.data?.more}
                 target={pull.target}
                 base={cmp.data!.merge_base}
+                add={add ? pull.source : undefined}
               />
             )}
           </section>
@@ -213,7 +231,7 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
       <aside className="order-last shrink-0 border-t border-hairline px-4 py-6 lg:order-none max-xl:lg:hidden xl:w-66 xl:border-t-0 xl:border-l">
         <div className="grid gap-6 xl:sticky xl:top-18">
           <Stepper pull={pull} />
-          <PullProperties pull={pull} files={files?.length} />
+          <PullProperties repo={repo} d={d} files={files?.length} />
         </div>
       </aside>
     </div>
@@ -256,6 +274,23 @@ function RailEnd({ branch, base }: { branch: string; base?: string }) {
   )
 }
 
+/** The slot above the top card: opens a pull request on top of `branch`. */
+function AddLayer({ repo, branch }: { repo: string; branch: string }) {
+  return (
+    <li>
+      <Link
+        to="/$"
+        params={{ _splat: href(repo, "compare", `${branch}...`) }}
+        className="flex h-9 items-center gap-2.5 rounded-[7px] border border-dashed border-stage-off px-3 text-[13px] text-muted-foreground hover:border-label hover:text-ink"
+      >
+        <Plus className="size-3.5" />
+        Add layer
+      </Link>
+      {rail}
+    </li>
+  )
+}
+
 /**
  * The pull requests of a stack from the top down, as cards on a rail that
  * ends at the base branch; numbered from the bottom. The card of this pull
@@ -265,15 +300,18 @@ function LayerStack({
   repo,
   layers,
   current,
+  add,
   children,
 }: {
   repo: string
   layers: PullLayer[]
   current: number
+  add: boolean
   children: ReactNode
 }) {
   return (
     <ol>
+      {add && <AddLayer repo={repo} branch={layers[0].source} />}
       {layers.map((l, i) => {
         const on = l.number === current
         const head = (
@@ -366,15 +404,19 @@ function CommitStack({
   more,
   target,
   base,
+  add,
 }: {
   repo: string
   commits: Commit[]
   more: boolean
   target: string
   base: string
+  /** The source branch, to offer a pull request on top of it. */
+  add?: string
 }) {
   return (
     <ol>
+      {add && <AddLayer repo={repo} branch={add} />}
       {commits.map((c, i) => (
         <li key={c.oid}>
           {i > 0 && rail}
@@ -493,7 +535,61 @@ function Stepper({ pull }: { pull: Pull }) {
   )
 }
 
-function PullProperties({ pull, files }: { pull: Pull; files?: number }) {
+/** The target branch of an open pull request, as a picker that moves it. */
+function TargetPicker({ repo, pull }: { repo: string; pull: Pull }) {
+  const refs = useRefs(repo)
+  const change = usePullChange(repo)
+  const branches = (refs.data?.branches ?? [])
+    .map((b) => b.name)
+    .filter((b) => b !== pull.source)
+  return (
+    <>
+      <Select
+        value={pull.target}
+        disabled={change.isPending}
+        onValueChange={(target) =>
+          change.mutate({ op: "pull_retarget", number: pull.number, target })
+        }
+      >
+        <SelectTrigger
+          size="sm"
+          aria-label="Target branch"
+          className="h-5.5! max-w-full min-w-0 gap-1.25 rounded-[5px] px-2 font-mono text-[11px] text-ink shadow-none [&_svg]:size-3! [&_svg]:text-muted-foreground"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {!branches.includes(pull.target) && (
+            <SelectItem value={pull.target} className="font-mono">
+              {pull.target}
+            </SelectItem>
+          )}
+          {branches.map((b) => (
+            <SelectItem key={b} value={b} className="font-mono">
+              {b}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {change.error && (
+        <p className="mt-1.5 text-xs text-destructive">
+          {change.error.message}
+        </p>
+      )}
+    </>
+  )
+}
+
+function PullProperties({
+  repo,
+  d,
+  files,
+}: {
+  repo: string
+  d: PullDetail
+  files?: number
+}) {
+  const { pull } = d
   // Who merged a pull request from GitHub is known only for merges seen
   // after the first import.
   const merger =
@@ -512,9 +608,15 @@ function PullProperties({ pull, files }: { pull: Pull; files?: number }) {
         {pull.source}
       </dd>
       <dt className="text-label">Into</dt>
-      <dd className="truncate font-mono text-xs text-ink" title={pull.target}>
-        {pull.target}
-      </dd>
+      {pull.state === "open" && d.can_close ? (
+        <dd className="min-w-0">
+          <TargetPicker repo={repo} pull={pull} />
+        </dd>
+      ) : (
+        <dd className="truncate font-mono text-xs text-ink" title={pull.target}>
+          {pull.target}
+        </dd>
+      )}
       {files !== undefined && (
         <>
           <dt className="text-label">Files</dt>
@@ -756,6 +858,22 @@ function TimelineEvent({
       )
     case "reopened":
       return line(<RotateCcw className="size-3.5" />, who("reopened"))
+    case "retargeted":
+      return line(
+        <ArrowRightLeft className="size-3.5" />,
+        <>
+          {e.author ? (
+            <>
+              <Who name={e.author} pull={pull} /> moved
+            </>
+          ) : (
+            "Moved"
+          )}{" "}
+          this from <span className="font-mono text-xs">{e.old_oid}</span> to{" "}
+          <span className="font-mono text-xs">{e.oid}</span>
+          {!e.author && " on GitHub"}
+        </>
+      )
     case "merged":
       return line(
         <GitMerge className="size-3.5 text-ink" />,

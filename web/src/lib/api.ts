@@ -129,10 +129,11 @@ export interface Pull {
 
 export interface PullEvent {
   id: number
-  kind: "comment" | "push" | "closed" | "reopened" | "merged"
+  kind: "comment" | "push" | "closed" | "reopened" | "merged" | "retargeted"
   /** null for the server. */
   author: string | null
   body: string | null
+  /** Commits; for `retargeted`, the old and new target branch. */
   old_oid: string | null
   oid: string | null
   created_ms: number
@@ -405,7 +406,7 @@ export function requestId() {
 
 /**
  * Changes a pull request: `pull_create`, `pull_comment`, `pull_close`,
- * `pull_reopen`, or `pull_merge`. Pages refresh from the change event too;
+ * `pull_reopen`, `pull_retarget`, or `pull_merge`. Pages refresh from the change event too;
  * refreshing here shows the change without waiting for it.
  */
 export function usePullChange(repo: string) {
@@ -413,9 +414,9 @@ export function usePullChange(repo: string) {
   return useMutation({
     mutationFn: (change: { op: string; [k: string]: unknown }) =>
       live.request<{ pull: Pull }>({ ...change, repo }),
-    onSuccess: ({ pull }) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repo", repo, "pulls"] })
-      qc.invalidateQueries({ queryKey: ["repo", repo, "pull", pull.number] })
+      qc.invalidateQueries({ queryKey: ["repo", repo, "pull"] })
     },
   })
 }

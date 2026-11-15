@@ -140,6 +140,12 @@ pub enum Query {
         repo: String,
         number: u64,
     },
+    /// Changes the target branch of an open pull request.
+    PullRetarget {
+        repo: String,
+        number: u64,
+        target: String,
+    },
     PullMerge {
         repo: String,
         number: u64,
@@ -321,6 +327,7 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::PullComment { repo, .. }
         | Query::PullClose { repo, .. }
         | Query::PullReopen { repo, .. }
+        | Query::PullRetarget { repo, .. }
         | Query::PullMerge { repo, .. } => repo.clone(),
     };
     let repo = readable(s, who, &name).await?;
@@ -360,6 +367,7 @@ async fn answer(s: &AppInner, who: &Identity, q: Query) -> Result<Value, ReadErr
         | Query::PullComment { .. }
         | Query::PullClose { .. }
         | Query::PullReopen { .. }
+        | Query::PullRetarget { .. }
         | Query::PullMerge { .. } => unreachable!(),
         Query::Refs { .. } => g.refs().await?,
         Query::Log {

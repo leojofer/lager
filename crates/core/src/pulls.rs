@@ -121,6 +121,8 @@ pub enum EventKind {
     Closed,
     Reopened,
     Merged,
+    /// The target branch changed.
+    Retargeted,
 }
 
 impl EventKind {
@@ -131,6 +133,7 @@ impl EventKind {
             Self::Closed => "closed",
             Self::Reopened => "reopened",
             Self::Merged => "merged",
+            Self::Retargeted => "retargeted",
         }
     }
 
@@ -141,6 +144,7 @@ impl EventKind {
             "closed" => Self::Closed,
             "reopened" => Self::Reopened,
             "merged" => Self::Merged,
+            "retargeted" => Self::Retargeted,
             _ => return Err(PullError::Unavailable(format!("unknown event {s:?}"))),
         })
     }
@@ -153,6 +157,8 @@ pub struct PullEvent {
     /// `None` for the server.
     pub author: Option<String>,
     pub body: Option<String>,
+    /// Commits; for [`EventKind::Retargeted`], the old and new target
+    /// branch.
     pub old_oid: Option<String>,
     pub oid: Option<String>,
     pub created_ms: u64,
@@ -636,6 +642,64 @@ impl Pulls {
         Ok(p)
     }
 
+    /// Moves an open pull request from target branch `old` to `target`,
+    /// whose commits are `now`.
+    pub async fn retarget(
+        &self,
+        repo: RepoId,
+        number: u64,
+        old: &str,
+        target: &str,
+        now: &Commits,
+        by: &str,
+    ) -> Result<Pull, PullError> {
+        let repo = repo.to_string();
+        let mut conn = self.pool.acquire().await.map_err(unavailable)?;
+        let mut tx = conn.begin().await.map_err(unavailable)?;
+        let changed = sqlx::query(
+            "UPDATE lager_pulls
+             SET target = $4, head_oid = $5, target_oid = $6, merge_base = $7,
+                 version = version + 1, updated_at = now()
+             WHERE repository = $1 AND number = $2 AND state = 'open' AND target = $3",
+        )
+        .bind(&repo)
+        .bind(number as i64)
+        .bind(old)
+        .bind(target)
+        .bind(&now.head)
+        .bind(&now.target)
+        .bind(&now.merge_base)
+        .execute(&mut *tx)
+        .await;
+        match changed {
+            Ok(r) if r.rows_affected() == 1 => {}
+            Ok(_) => {
+                return Err(PullError::State(
+                    "the pull request changed; reload the page".into(),
+                ));
+            }
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+                return Err(PullError::State(
+                    "another pull request is open for these branches".into(),
+                ));
+            }
+            Err(e) => return Err(unavailable(e)),
+        }
+        event(
+            &mut tx,
+            &repo,
+            number,
+            EventKind::Retargeted,
+            Some(by),
+            Some(old),
+            Some(target),
+        )
+        .await?;
+        let p = one(&mut tx, &repo, number as i64).await?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(p)
+    }
+
     /// Records the commits of an open pull request, if the recorded ones
     /// are still `old`. A new head adds a push to the timeline. `None`:
     /// nothing changed.
@@ -876,6 +940,15 @@ impl Pulls {
                         None,
                         Some(&old.head_oid),
                         Some(&g.head_oid),
+                        &g.updated_at,
+                    ));
+                }
+                if old.target != g.target {
+                    events.push((
+                        EventKind::Retargeted,
+                        None,
+                        Some(&old.target),
+                        Some(&g.target),
                         &g.updated_at,
                     ));
                 }
