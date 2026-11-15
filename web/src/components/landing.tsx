@@ -294,7 +294,7 @@ export function Landing() {
             "flex items-center gap-6 py-6 text-xs text-muted-foreground"
           )}
         >
-          <span className="mr-auto">Lager is German for warehouse.</span>
+          <span className="mr-auto">lager is german for warehouse. or beer</span>
           <a href={source} className="hover:text-ink">
             Source
           </a>
