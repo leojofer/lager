@@ -463,7 +463,7 @@ function RecentBranches({
     .slice(0, SHOWN)
   if (branches.length === 0) return null
   return (
-    <section className="grid gap-2.5 border-t border-hairline pt-6">
+    <section className="grid grid-cols-1 gap-2.5 border-t border-hairline pt-6">
       <div className="flex items-center">
         <h2 className="label-caps">Recent branches</h2>
         <Link
@@ -474,7 +474,7 @@ function RecentBranches({
           All
         </Link>
       </div>
-      <ul className="grid">
+      <ul className="grid grid-cols-1">
         {branches.map((b) => {
           const pull = open?.find((p) => p.source === b.name)
           return (
