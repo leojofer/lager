@@ -39,6 +39,7 @@ function SignIn() {
   const navigate = useNavigate()
   const [error, setError] = useState<string | null>(github_error ?? null)
   const [busy, setBusy] = useState(false)
+  const [withPassword, setWithPassword] = useState(false)
 
   const [passkeySupported, setPasskeySupported] = useState(false)
   useEffect(() => setPasskeySupported(supportsPasskeys()), [])
@@ -101,53 +102,80 @@ function SignIn() {
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <form onSubmit={submit} className="grid gap-4">
-              {error && (
-                <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
-                </Alert>
-              )}
-              {passkeySupported && (
+            {error && (
+              <Alert variant="destructive" className="mb-4">
+                <AlertDescription>{error}</AlertDescription>
+              </Alert>
+            )}
+            {withPassword || !(passkeySupported || signUp.data?.github) ? (
+              <form onSubmit={submit} className="grid gap-4">
+                <div className="grid gap-2">
+                  <Label htmlFor="user">User name</Label>
+                  <Input
+                    id="user"
+                    name="user"
+                    autoComplete="username"
+                    required
+                    autoFocus={withPassword}
+                  />
+                </div>
+                <div className="grid gap-2">
+                  <Label htmlFor="password">Password</Label>
+                  <Input
+                    id="password"
+                    name="password"
+                    type="password"
+                    autoComplete="current-password"
+                    required
+                  />
+                </div>
+                <Button type="submit" disabled={busy}>
+                  {busy ? "Signing in…" : "Sign in"}
+                </Button>
+                {withPassword && (
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    disabled={busy}
+                    onClick={() => setWithPassword(false)}
+                  >
+                    Other ways
+                  </Button>
+                )}
+              </form>
+            ) : (
+              <div className="grid gap-4">
+                {passkeySupported && (
+                  <Button type="button" disabled={busy} onClick={passkey}>
+                    Sign in with a passkey
+                  </Button>
+                )}
+                {signUp.data?.github && (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    disabled={busy}
+                    asChild
+                  >
+                    <a href={githubSignInHref(destination())}>
+                      <GithubMark />
+                      Sign in with GitHub
+                    </a>
+                  </Button>
+                )}
                 <Button
                   type="button"
-                  variant="default"
+                  variant="outline"
                   disabled={busy}
-                  onClick={passkey}
+                  onClick={() => {
+                    setError(null)
+                    setWithPassword(true)
+                  }}
                 >
-                  Sign in with a passkey
+                  Sign in with a password
                 </Button>
-              )}
-              {signUp.data?.github && (
-                <Button type="button" variant="outline" disabled={busy} asChild>
-                  <a href={githubSignInHref(destination())}>
-                    <GithubMark />
-                    Sign in with GitHub
-                  </a>
-                </Button>
-              )}
-              {(passkeySupported || signUp.data?.github) && (
-                <p className="text-center text-sm text-muted-foreground">
-                  Or sign in with your password
-                </p>
-              )}
-              <div className="grid gap-2">
-                <Label htmlFor="user">User name</Label>
-                <Input id="user" name="user" autoComplete="username" required />
               </div>
-              <div className="grid gap-2">
-                <Label htmlFor="password">Password</Label>
-                <Input
-                  id="password"
-                  name="password"
-                  type="password"
-                  autoComplete="current-password"
-                  required
-                />
-              </div>
-              <Button type="submit" variant="outline" disabled={busy}>
-                {busy ? "Signing in…" : "Sign in"}
-              </Button>
-            </form>
+            )}
             {signUp.data?.enabled && (
               <p className="mt-4 text-center text-sm text-muted-foreground">
                 No account yet?{" "}

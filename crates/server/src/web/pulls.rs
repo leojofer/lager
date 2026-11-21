@@ -17,7 +17,7 @@ use crate::http::AppInner;
 use crate::pulls::PullOpError;
 use lager_core::identity::Identity;
 use lager_core::model::Oid;
-use lager_core::pulls::{Counts, Pull, PullError, PullEvent, PullState};
+use lager_core::pulls::{Counts, Layer, Pull, PullError, PullEvent, PullState};
 use lager_core::repo::{Access, RepoSettings};
 
 const MAX_PULLS: u32 = 100;
@@ -85,6 +85,9 @@ pub struct PullDetail {
     generation: u64,
     pull: Pull,
     events: Vec<PullEvent>,
+    /// The open pull requests that build on each other, from the top down to
+    /// the one on the base branch, this one among them; empty for one alone.
+    stack: Vec<Layer>,
     /// The comparison that shows the pull request's changes.
     base: String,
     head: String,
@@ -293,6 +296,36 @@ impl Op for PullReopenOp {
     }
 }
 
+/// Changes the target branch of an open pull request.
+#[derive(Deserialize, TS)]
+#[serde(deny_unknown_fields)]
+pub struct PullRetargetOp {
+    repo: String,
+    number: u64,
+    target: String,
+}
+
+impl Op for PullRetargetOp {
+    type Answer = PullChanged;
+
+    async fn run(self, s: &AppInner, who: &Identity) -> Result<PullChanged, OpError> {
+        let repo = readable(s, who, &self.repo).await?;
+        let pull = match mirror(s, &repo) {
+            Some(github) => {
+                github
+                    .pull_retarget(&repo, who, self.number, &self.target)
+                    .await?
+            }
+            None => {
+                s.pulls
+                    .retarget(&repo, who, self.number, &self.target)
+                    .await?
+            }
+        };
+        Ok(PullChanged { pull })
+    }
+}
+
 async fn set_open(
     s: &AppInner,
     who: &Identity,
@@ -361,6 +394,7 @@ async fn pull(
         s.pulls.clone().request_sync(repo.id);
     }
     let events = s.pulls.db.events(repo.id, number).await?;
+    let stack = s.pulls.db.stack(repo.id, &p).await?;
     let g = Git::open(s, repo).await?;
     let view = &g.view;
     let source = g.commit_oid(&format!("refs/heads/{}", p.source)).await;
@@ -460,6 +494,7 @@ async fn pull(
     Ok(PullDetail {
         generation: view.generation,
         events,
+        stack,
         head,
         base,
         source_oid: source,

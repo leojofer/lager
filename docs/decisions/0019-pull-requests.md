@@ -77,7 +77,8 @@ by the server have an empty one.
 
 **Web interface.** The live connection (decision 13) carries the reads
 `pulls`, `pull`, and `compare` and the changes `pull_create`,
-`pull_comment`, `pull_close`, `pull_reopen`, and `pull_merge`. Changes
+`pull_comment`, `pull_close`, `pull_reopen`, `pull_merge`, and (since
+[decision 35](0035-stacked-pull-requests.md)) `pull_retarget`. Changes
 need a session; creating and commenting need read access, closing needs
 authorship or write access, merging needs write access. The server sends
 `pull {repo, number, version}` to subscribers of the repository, through
