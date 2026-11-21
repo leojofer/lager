@@ -15,19 +15,10 @@ import {
 } from "lucide-react"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 
-import {
-  requestId,
-  useCompare,
-  useLive,
-  usePull,
-  useRefs,
-  usePullChange,
-  type Commit,
-  type Pull,
-  type PullDetail,
-  type PullEvent,
-  type PullLayer,
-} from "@/lib/api"
+import { requestId, useCompare, usePull, usePullChange } from "@/lib/pulls"
+import { useRefs } from "@/lib/repos"
+import type { Commit, Pull, PullDetail, PullEvent, PullLayer } from "@/lib/wire"
+import { useLive } from "@/lib/query"
 import { ago, fullDate, short, since } from "@/lib/format"
 import { href } from "@/lib/paths"
 import { cn } from "@/lib/utils"

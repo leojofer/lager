@@ -10,8 +10,10 @@ license = "FSL-1.1-ALv2"
 
 # Password hashing is deliberately expensive and prohibitively slow in an
 # unoptimized local build. Keep the application debuggable while optimizing
-# the crate that performs PBKDF2.
+# the crates that perform PBKDF2.
 [profile.dev.package.lager-core]
+opt-level = 3
+[profile.dev.package.sha2]
 opt-level = 3
 
 # Likewise for the gix crates that decompress and decode objects in the web
@@ -76,6 +78,9 @@ thiserror = "=2.0.21"
 tokio = { version = "=1.53.1", features = ["full"] }
 tokio-util = { version = "=0.7.19", features = ["io", "compat", "rt"] }
 tracing = "=0.1.44"
+# TypeScript types of the web interface's operations
+# (docs/decisions/0037-generated-wire-types.md).
+ts-rs = "=12.0.1"
 tracing-subscriber = { version = "=0.3.23", features = ["env-filter", "fmt"] }
 uuid = { version = "=1.26.1", features = ["v4", "serde"] }
 webauthn-rs = { version = "=0.5.5", default-features = false, features = ["danger-allow-state-serialisation", "conditional-ui"] }
