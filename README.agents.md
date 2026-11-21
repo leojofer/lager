@@ -228,7 +228,9 @@ where the container image installs it; without it, only the API under
   [decision 16](docs/decisions/0016-raw-files-and-markdown.md).
 - Pull requests: open one on the web from two branches of a repository
   (`/<repo>/-/pulls`), discuss it, and merge it with a merge commit or as
-  one squashed commit. Users with read access open and comment; merging
+  one squashed commit. Open pull requests whose target branch is another's
+  source branch show as a stack; the author or a user with write access
+  can change the target branch of an open one. Users with read access open and comment; merging
   needs write access and the ref rules of the target branch. The server
   keeps `refs/pull/<n>/head` at the source branch (`git fetch origin
   pull/7/head`); clients cannot push to `refs/pull/`. Pull requests live in
@@ -279,6 +281,14 @@ above 185 seconds, so that running pushes finish.
 terminates HTTPS; repositories live in an external S3-compatible service.
 `master` deploys to staging this way; see [deploy/README.md](deploy/README.md).
 
+A release is a version bump on `master` with the tag `v<version>`:
+
+```bash
+scripts/bump.sh           # 0.1.12 -> 0.1.13: commit and tag
+scripts/bump.sh 0.2.0     # a given version
+scripts/bump.sh --push    # also push master and the tag
+```
+
 On a Mac, build for x86_64 servers with
 `docker build --platform linux/amd64 ...`; it runs under emulation and is
 slow.
@@ -316,7 +326,7 @@ bun run typecheck
 The operations that pages send over the live connection are typed on the
 server (`crates/server/src/web/ops.rs`); `web/src/lib/wire.ts` holds their
 TypeScript types and is written from them
-([decision 35](docs/decisions/0035-generated-wire-types.md)). After a change
+([decision 37](docs/decisions/0037-generated-wire-types.md)). After a change
 to an operation or to a type in an answer:
 
 ```bash

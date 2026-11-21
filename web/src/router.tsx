@@ -6,6 +6,8 @@ export function getRouter() {
     routeTree,
 
     scrollRestoration: true,
+    // The main area scrolls, not the window.
+    scrollToTopSelectors: ["[data-slot=sidebar-inset]"],
     defaultPreload: "intent",
     defaultPreloadStaleTime: 0,
   })

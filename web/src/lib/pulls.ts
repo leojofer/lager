@@ -63,11 +63,16 @@ export function requestId() {
 }
 
 type PullChangeOp =
-  "pull_create" | "pull_comment" | "pull_close" | "pull_reopen" | "pull_merge"
+  | "pull_create"
+  | "pull_comment"
+  | "pull_close"
+  | "pull_reopen"
+  | "pull_retarget"
+  | "pull_merge"
 
 /**
  * Changes a pull request: `pull_create`, `pull_comment`, `pull_close`,
- * `pull_reopen`, or `pull_merge`. Pages refresh from the change event too;
+ * `pull_reopen`, `pull_retarget`, or `pull_merge`. Pages refresh from the change event too;
  * refreshing here shows the change without waiting for it.
  */
 export function usePullChange(repo: string) {
@@ -75,9 +80,9 @@ export function usePullChange(repo: string) {
   return useMutation({
     mutationFn: (change: Change<PullChangeOp>) =>
       live.request<PullChangeOp>({ ...change, repo }),
-    onSuccess: ({ pull }) => {
+    onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["repo", repo, "pulls"] })
-      qc.invalidateQueries({ queryKey: ["repo", repo, "pull", pull.number] })
+      qc.invalidateQueries({ queryKey: ["repo", repo, "pull"] })
     },
   })
 }

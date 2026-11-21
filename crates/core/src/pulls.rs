@@ -14,6 +14,8 @@
 //! and [`Pulls::import_github_comment`] write them, and nothing here
 //! changes them.
 
+use std::collections::VecDeque;
+
 use serde::Serialize;
 use sqlx::postgres::{PgPool, PgRow};
 use sqlx::{Connection, PgConnection, Row};
@@ -78,6 +80,40 @@ pub struct Pull {
     pub merge_request: Option<String>,
 }
 
+/// One pull request of a stack.
+#[derive(Clone, Debug, Serialize, TS)]
+#[ts(rename = "PullLayer")]
+pub struct Layer {
+    pub number: u64,
+    pub title: String,
+    pub source: String,
+    pub target: String,
+}
+
+/// The stack of pull request `number` among the open ones, from the top
+/// down: each one's target branch is the source branch of the next. Empty
+/// for a pull request alone. Where two continue a stack, the first does.
+fn stack_of(open: &[Layer], number: u64) -> Vec<Layer> {
+    let Some(at) = open.iter().position(|l| l.number == number) else {
+        return vec![];
+    };
+    let mut order = VecDeque::from([at]);
+    while let Some(i) =
+        (0..open.len()).find(|i| !order.contains(i) && open[*i].target == open[order[0]].source)
+    {
+        order.push_front(i);
+    }
+    while let Some(i) = (0..open.len())
+        .find(|i| !order.contains(i) && open[*i].source == open[order[order.len() - 1]].target)
+    {
+        order.push_back(i);
+    }
+    if order.len() < 2 {
+        return vec![];
+    }
+    order.into_iter().map(|i| open[i].clone()).collect()
+}
+
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, TS)]
 #[serde(rename_all = "lowercase")]
 #[ts(rename = "PullEventKind")]
@@ -88,6 +124,8 @@ pub enum EventKind {
     Closed,
     Reopened,
     Merged,
+    /// The target branch changed.
+    Retargeted,
 }
 
 impl EventKind {
@@ -98,6 +136,7 @@ impl EventKind {
             Self::Closed => "closed",
             Self::Reopened => "reopened",
             Self::Merged => "merged",
+            Self::Retargeted => "retargeted",
         }
     }
 
@@ -108,6 +147,7 @@ impl EventKind {
             "closed" => Self::Closed,
             "reopened" => Self::Reopened,
             "merged" => Self::Merged,
+            "retargeted" => Self::Retargeted,
             _ => return Err(PullError::Unavailable(format!("unknown event {s:?}"))),
         })
     }
@@ -120,6 +160,8 @@ pub struct PullEvent {
     /// `None` for the server.
     pub author: Option<String>,
     pub body: Option<String>,
+    /// Commits; for [`EventKind::Retargeted`], the old and new target
+    /// branch.
     pub old_oid: Option<String>,
     pub oid: Option<String>,
     pub created_ms: u64,
@@ -422,6 +464,33 @@ impl Pulls {
         Ok((rows.into_iter().map(pull).collect::<Result<_, _>>()?, c))
     }
 
+    /// The stack of an open pull request, from the top down to the one on
+    /// the base branch; empty for one alone. It is not stored: it follows
+    /// the branches of the open pull requests.
+    pub async fn stack(&self, repo: RepoId, of: &Pull) -> Result<Vec<Layer>, PullError> {
+        if of.state != PullState::Open {
+            return Ok(vec![]);
+        }
+        let rows: Vec<(i64, String, String, String)> = sqlx::query_as(
+            "SELECT number, title, source, target FROM lager_pulls
+             WHERE repository = $1 AND state = 'open' ORDER BY number",
+        )
+        .bind(repo.to_string())
+        .fetch_all(&self.pool)
+        .await
+        .map_err(unavailable)?;
+        let open: Vec<Layer> = rows
+            .into_iter()
+            .map(|(number, title, source, target)| Layer {
+                number: number as u64,
+                title,
+                source,
+                target,
+            })
+            .collect();
+        Ok(stack_of(&open, of.number))
+    }
+
     /// Unmerged pull requests, including closed ones with a pending merge
     /// receipt. GitHub's are left out: GitHub keeps them.
     pub async fn unmerged(&self, repo: RepoId) -> Result<Vec<Pull>, PullError> {
@@ -572,6 +641,64 @@ impl Pulls {
             Err(e) => return Err(unavailable(e)),
         }
         event(&mut tx, &repo, number, kind, Some(by), None, None).await?;
+        let p = one(&mut tx, &repo, number as i64).await?;
+        tx.commit().await.map_err(unavailable)?;
+        Ok(p)
+    }
+
+    /// Moves an open pull request from target branch `old` to `target`,
+    /// whose commits are `now`.
+    pub async fn retarget(
+        &self,
+        repo: RepoId,
+        number: u64,
+        old: &str,
+        target: &str,
+        now: &Commits,
+        by: &str,
+    ) -> Result<Pull, PullError> {
+        let repo = repo.to_string();
+        let mut conn = self.pool.acquire().await.map_err(unavailable)?;
+        let mut tx = conn.begin().await.map_err(unavailable)?;
+        let changed = sqlx::query(
+            "UPDATE lager_pulls
+             SET target = $4, head_oid = $5, target_oid = $6, merge_base = $7,
+                 version = version + 1, updated_at = now()
+             WHERE repository = $1 AND number = $2 AND state = 'open' AND target = $3",
+        )
+        .bind(&repo)
+        .bind(number as i64)
+        .bind(old)
+        .bind(target)
+        .bind(&now.head)
+        .bind(&now.target)
+        .bind(&now.merge_base)
+        .execute(&mut *tx)
+        .await;
+        match changed {
+            Ok(r) if r.rows_affected() == 1 => {}
+            Ok(_) => {
+                return Err(PullError::State(
+                    "the pull request changed; reload the page".into(),
+                ));
+            }
+            Err(sqlx::Error::Database(e)) if e.is_unique_violation() => {
+                return Err(PullError::State(
+                    "another pull request is open for these branches".into(),
+                ));
+            }
+            Err(e) => return Err(unavailable(e)),
+        }
+        event(
+            &mut tx,
+            &repo,
+            number,
+            EventKind::Retargeted,
+            Some(by),
+            Some(old),
+            Some(target),
+        )
+        .await?;
         let p = one(&mut tx, &repo, number as i64).await?;
         tx.commit().await.map_err(unavailable)?;
         Ok(p)
@@ -817,6 +944,15 @@ impl Pulls {
                         None,
                         Some(&old.head_oid),
                         Some(&g.head_oid),
+                        &g.updated_at,
+                    ));
+                }
+                if old.target != g.target {
+                    events.push((
+                        EventKind::Retargeted,
+                        None,
+                        Some(&old.target),
+                        Some(&g.target),
                         &g.updated_at,
                     ));
                 }

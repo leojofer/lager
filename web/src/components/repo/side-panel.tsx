@@ -124,7 +124,7 @@ export function SidePanelLayout({
   // the panel stays in view. The group sets its own height to 100%, so the
   // wrapper sizes it.
   return (
-    <div className="h-[calc(100svh-3rem)] min-h-96">
+    <div className="h-[calc(var(--frame-height)-3rem)] min-h-96">
       <ResizablePanelGroup
         id={id}
         defaultLayout={layout.defaultLayout}

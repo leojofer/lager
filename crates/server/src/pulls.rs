@@ -495,6 +495,79 @@ impl PullService {
         Ok(p)
     }
 
+    /// Changes the target branch of an open pull request: its author or a
+    /// user with write access.
+    pub async fn retarget(
+        self: &Arc<Self>,
+        repo: &RepoSettings,
+        who: &Identity,
+        number: u64,
+        target: &str,
+    ) -> Result<Pull, PullOpError> {
+        let user = signed_in(who)?;
+        let level = self.directory.access(who, repo);
+        if level < Access::Read {
+            return Err(PullOpError::NotFound);
+        }
+        let p = self
+            .db
+            .get(repo.id, number)
+            .await?
+            .ok_or(PullOpError::NotFound)?;
+        on_github(&p)?;
+        if p.author != user && level < Access::Write {
+            return Err(PullOpError::Forbidden(
+                "only the author and users with write access can do this".into(),
+            ));
+        }
+        if p.state != PullState::Open {
+            return Err(PullOpError::Invalid("the pull request is not open".into()));
+        }
+        if target == p.target {
+            return Ok(p);
+        }
+        let source = p.source.as_str();
+        if source == target {
+            return Err(PullOpError::Invalid("choose two different branches".into()));
+        }
+        let (source_ref, target_ref) = (branch(source)?, branch(target)?);
+        let git = &self.registry.svc.git;
+        let (cache, view, refs) = self.registry.controller(repo.id).prepare_change().await?;
+        let tip = refs
+            .refs
+            .get(&source_ref)
+            .ok_or_else(|| PullOpError::Invalid(format!("branch {source} not found")))?;
+        let target_tip = refs
+            .refs
+            .get(&target_ref)
+            .ok_or_else(|| PullOpError::Invalid(format!("branch {target} not found")))?;
+        if git.is_ancestor(&view.dir, tip, target_tip).await? {
+            return Err(PullOpError::Invalid(format!(
+                "{target} already contains every commit of {source}"
+            )));
+        }
+        let base = git
+            .merge_base(&view.dir, cache.format, target_tip, tip)
+            .await?
+            .ok_or_else(|| {
+                PullOpError::Invalid(format!("{source} and {target} share no history"))
+            })?;
+        drop((cache, view));
+        let now = Commits {
+            head: tip.to_string(),
+            target: target_tip.to_string(),
+            merge_base: base.to_string(),
+        };
+        let p = self
+            .db
+            .retarget(repo.id, number, &p.target, target, &now, user)
+            .await?;
+        tracing::info!(repo = %repo.name, pull = number, user, target, "pull request retargeted");
+        self.publish(repo.id, &p);
+        self.clone().request_sync(repo.id);
+        Ok(p)
+    }
+
     /// Merges an open pull request whose source branch is still at
     /// `expected_head`. `squash`: one commit on the target instead of a
     /// merge commit. A retry with the same request answers the merge.
