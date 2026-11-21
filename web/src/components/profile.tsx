@@ -127,15 +127,6 @@ export function ProfilePage({ user }: { user: string }) {
                     <Badge variant="outline">
                       {r.anonymous_read ? "Public" : "Private"}
                     </Badge>
-                    {r.mirror && (
-                      <Badge
-                        variant="outline"
-                        title={`Mirror of github.com/${r.mirror}`}
-                      >
-                        <GithubMark />
-                        mirror
-                      </Badge>
-                    )}
                   </Link>
                 </li>
               ))}

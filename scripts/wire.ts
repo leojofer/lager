@@ -1,7 +1,7 @@
 #!/usr/bin/env bun
 // Writes web/src/lib/wire.ts: the TypeScript types of the operations that
 // the web interface sends over the live connection, from the server's own
-// types (docs/decisions/0035-generated-wire-types.md). Run it after a change
+// types (docs/decisions/0037-generated-wire-types.md). Run it after a change
 // to an operation or to a type in its answer.
 //
 //   scripts/wire.ts           write the file

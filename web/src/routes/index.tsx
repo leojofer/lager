@@ -113,15 +113,6 @@ function RepoRow({ repo: r }: { repo: RepoSummary }) {
         <Badge variant="outline">
           {r.anonymous_read ? "Public" : "Private"}
         </Badge>
-        {r.mirror && (
-          <Badge
-            variant="outline"
-            title={`Mirror of github.com/${r.mirror}`}
-            className="hidden sm:inline-flex"
-          >
-            mirror
-          </Badge>
-        )}
         <span className="ml-auto hidden font-mono text-[11px] text-muted-foreground sm:inline">
           {r.default_branch}
         </span>
