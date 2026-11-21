@@ -5,7 +5,7 @@
 //! that answers it; [`Op`] names the type of its answer. The table below
 //! lists them all by name. The TypeScript types of the web interface are
 //! written from the same table
-//! (docs/decisions/0035-generated-wire-types.md).
+//! (docs/decisions/0037-generated-wire-types.md).
 
 use std::any::TypeId;
 use std::collections::{BTreeMap, HashSet};
@@ -77,6 +77,7 @@ ops! {
     "pull_comment" => pulls::PullCommentOp,
     "pull_close" => pulls::PullCloseOp,
     "pull_reopen" => pulls::PullReopenOp,
+    "pull_retarget" => pulls::PullRetargetOp,
     "pull_merge" => pulls::PullMergeOp,
     "profile" => profile::ProfileOp,
     "github" => github::GithubOp,

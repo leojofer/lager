@@ -233,6 +233,11 @@ export type PullDetail = {
   pull: Pull
   events: Array<PullEvent>
   /**
+   * The open pull requests that build on each other, from the top down to
+   * the one on the base branch, this one among them; empty for one alone.
+   */
+  stack: Array<PullLayer>
+  /**
    * The comparison that shows the pull request's changes.
    */
   base: string
@@ -257,6 +262,10 @@ export type PullEvent = {
    */
   author: string | null
   body: string | null
+  /**
+   * Commits; for [`EventKind::Retargeted`], the old and new target
+   * branch.
+   */
   old_oid: string | null
   oid: string | null
   created_ms: number
@@ -267,7 +276,17 @@ export type PullEvent = {
 }
 
 export type PullEventKind =
-  "comment" | "push" | "closed" | "reopened" | "merged"
+  "comment" | "push" | "closed" | "reopened" | "merged" | "retargeted"
+
+/**
+ * One pull request of a stack.
+ */
+export type PullLayer = {
+  number: number
+  title: string
+  source: string
+  target: string
+}
 
 export type PullList = { pulls: Array<Pull>; counts: PullCounts; more: boolean }
 
@@ -408,6 +427,10 @@ export type Ops = {
   }
   pull_close: { args: { repo: string; number: number }; answer: PullChanged }
   pull_reopen: { args: { repo: string; number: number }; answer: PullChanged }
+  pull_retarget: {
+    args: { repo: string; number: number; target: string }
+    answer: PullChanged
+  }
   pull_merge: {
     args: {
       repo: string

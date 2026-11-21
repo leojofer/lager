@@ -63,9 +63,10 @@ export function useWatch(repo: string) {
         refresh()
       },
       onResync: refresh,
-      onPull: (number) => {
+      onPull: () => {
         qc.invalidateQueries({ queryKey: ["repo", repo, "pulls"] })
-        qc.invalidateQueries({ queryKey: ["repo", repo, "pull", number] })
+        // Every one: a stack changes with its other pull requests.
+        qc.invalidateQueries({ queryKey: ["repo", repo, "pull"] })
       },
     })
   }, [qc, repo])

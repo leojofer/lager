@@ -201,6 +201,27 @@ impl Github {
         self.written(repo, &a, p).await
     }
 
+    /// Changes the base branch of a pull request on GitHub.
+    pub async fn pull_retarget(
+        &self,
+        repo: &RepoSettings,
+        who: &Identity,
+        number: u64,
+        target: &str,
+    ) -> Result<Pull, PullOpError> {
+        let a = self.acting(who, repo).await?;
+        self.copied(repo, number).await?;
+        let p: ApiPull = self
+            .change(
+                Method::PATCH,
+                &a.token,
+                &format!("/repos/{}/pulls/{number}", a.github),
+                json!({ "base": target }),
+            )
+            .await?;
+        self.written(repo, &a, p).await
+    }
+
     /// Merges an open pull request on GitHub whose head is still at
     /// `expected_head`. GitHub writes the commit; the sync brings it.
     pub async fn pull_merge(

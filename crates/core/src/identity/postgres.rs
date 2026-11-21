@@ -326,6 +326,13 @@ ALTER TABLE lager_github_accounts ADD COLUMN auto_error text;
 -- The repositories that the last check to skip any skipped, and why.
 ALTER TABLE lager_github_accounts ADD COLUMN auto_skipped text;
 "#,
+    // A pull request can change its target branch
+    // (docs/decisions/0019-pull-requests.md).
+    r#"
+ALTER TABLE lager_pull_events DROP CONSTRAINT lager_pull_events_kind_check;
+ALTER TABLE lager_pull_events ADD CONSTRAINT lager_pull_events_kind_check
+    CHECK (kind IN ('comment', 'push', 'closed', 'reopened', 'merged', 'retargeted'));
+"#,
 ];
 
 /// SSH keys a user can have at the same time.

@@ -43,7 +43,7 @@ export function Overview({ repo, refs }: { repo: string; refs: Refs }) {
   const activity = useActivity(repo, refs.head)
 
   return (
-    <div className="flex min-h-[calc(100svh-3rem)] flex-col">
+    <div className="flex min-h-[calc(var(--frame-height)-3rem)] shrink-0 flex-col">
       <Hero repo={repo} refs={refs} updated={activity.commits?.[0]} />
       <div className="grid shrink-0 grid-cols-2 border-y border-hairline lg:grid-cols-4">
         <Stat label="Open pull requests" to={href(repo, "pulls")}>
@@ -186,7 +186,7 @@ function Hero({
                 className="flex items-center gap-1.5 hover:text-ink"
               >
                 <GithubMark className="size-3 text-label" />
-                Mirror of {refs.mirror}
+                {refs.mirror}
               </a>
             )}
             {updated && (
@@ -459,7 +459,7 @@ function RecentBranches({
     .slice(0, SHOWN)
   if (branches.length === 0) return null
   return (
-    <section className="grid gap-2.5 border-t border-hairline pt-6">
+    <section className="grid grid-cols-1 gap-2.5 border-t border-hairline pt-6">
       <div className="flex items-center">
         <h2 className="label-caps">Recent branches</h2>
         <Link
@@ -470,7 +470,7 @@ function RecentBranches({
           All
         </Link>
       </div>
-      <ul className="grid">
+      <ul className="grid grid-cols-1">
         {branches.map((b) => {
           const pull = open?.find((p) => p.source === b.name)
           return (

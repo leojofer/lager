@@ -1,4 +1,4 @@
-# 35. The web interface's types come from the server's
+# 37. The web interface's types come from the server's
 
 Status: accepted; implemented in `crates/server/src/web/ops.rs`,
 `scripts/wire.ts`, and `web/src/lib/wire.ts`. Date: November 14, 2026.

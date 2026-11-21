@@ -1,6 +1,7 @@
 import { Link } from "@tanstack/react-router"
 import {
   AlertTriangle,
+  ArrowRightLeft,
   Check,
   CheckCircle2,
   ChevronDown,
@@ -8,15 +9,16 @@ import {
   GitCommitHorizontal,
   GitMerge,
   GitPullRequestClosed,
+  Plus,
   RotateCcw,
   Upload,
 } from "lucide-react"
 import { useEffect, useMemo, useState, type ReactNode } from "react"
 
 import { requestId, useCompare, usePull, usePullChange } from "@/lib/pulls"
-import type { Pull, PullDetail, PullEvent } from "@/lib/wire"
+import { useRefs } from "@/lib/repos"
+import type { Commit, Pull, PullDetail, PullEvent, PullLayer } from "@/lib/wire"
 import { useLive } from "@/lib/query"
-import type { Commit } from "@/lib/wire"
 import { ago, fullDate, short, since } from "@/lib/format"
 import { href } from "@/lib/paths"
 import { cn } from "@/lib/utils"
@@ -29,6 +31,13 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 import { Skeleton } from "@/components/ui/skeleton"
 import { QueryError } from "@/components/query-error"
 import { Avatar } from "./avatar"
@@ -41,7 +50,7 @@ import { DiffStat, PageBody, SectionHead } from "@/components/frame"
 
 /**
  * A pull request: its commits as a stack from the head down to the target
- * branch, the conversation and the changed files one below the other, and
+ * branch, or inside its layer of a stack of pull requests, the conversation and the changed files one below the other, and
  * the state and properties beside them. `/commits` and `/files` scroll to
  * their section.
  */
@@ -78,19 +87,28 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
   const commits = cmp.data?.commits
   const adds = files?.reduce((n, f) => n + f.adds, 0) ?? 0
   const dels = files?.reduce((n, f) => n + f.dels, 0) ?? 0
+  const stacked = d.stack.length > 1
+  // A new pull request on top of this one, or of its stack.
+  const add = pull.state === "open" && d.can_comment
 
   return (
-    <div className="flex min-h-[calc(100svh-3rem)] flex-col lg:flex-row">
+    <div className="flex min-h-[calc(var(--frame-height)-3rem)] shrink-0 flex-col lg:flex-row">
       <aside className="order-last shrink-0 border-t border-hairline lg:order-none lg:w-75 lg:border-t-0 lg:border-r">
-        <div className="grid grid-cols-1 gap-8 px-4 py-6 lg:sticky lg:top-12 lg:max-h-[calc(100svh-3rem)] lg:overflow-y-auto">
+        <div className="grid grid-cols-1 gap-8 px-4 py-6 lg:sticky lg:top-12 lg:max-h-[calc(var(--frame-height)-3rem)] lg:overflow-y-auto">
           <section id="commits" className="scroll-mt-14">
             <div className="flex items-center gap-2 px-1 pb-3">
-              <h2 className="label-caps">Commits</h2>
-              {commits && (
+              <h2 className="label-caps">{stacked ? "Stack" : "Commits"}</h2>
+              {stacked ? (
                 <span className="font-mono text-[11px] font-medium text-label">
-                  {commits.length}
-                  {cmp.data?.more && "+"}
+                  {d.stack.length}
                 </span>
+              ) : (
+                commits && (
+                  <span className="font-mono text-[11px] font-medium text-label">
+                    {commits.length}
+                    {cmp.data?.more && "+"}
+                  </span>
+                )
               )}
               {files && (
                 <span className="ml-auto">
@@ -98,7 +116,26 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
                 </span>
               )}
             </div>
-            {cmp.error ? (
+            {stacked ? (
+              <LayerStack
+                repo={repo}
+                layers={d.stack}
+                current={pull.number}
+                add={add}
+              >
+                {cmp.error ? (
+                  <QueryError error={cmp.error} />
+                ) : !commits ? (
+                  <Skeleton className="h-16" />
+                ) : (
+                  <LayerCommits
+                    repo={repo}
+                    commits={commits}
+                    more={!!cmp.data?.more}
+                  />
+                )}
+              </LayerStack>
+            ) : cmp.error ? (
               <QueryError error={cmp.error} />
             ) : !commits ? (
               <Skeleton className="h-32" />
@@ -109,6 +146,7 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
                 more={!!cmp.data?.more}
                 target={pull.target}
                 base={cmp.data!.merge_base}
+                add={add ? pull.source : undefined}
               />
             )}
           </section>
@@ -184,10 +222,166 @@ export function PullView({ repo, rest }: { repo: string; rest: string[] }) {
       <aside className="order-last shrink-0 border-t border-hairline px-4 py-6 lg:order-none max-xl:lg:hidden xl:w-66 xl:border-t-0 xl:border-l">
         <div className="grid gap-6 xl:sticky xl:top-18">
           <Stepper pull={pull} />
-          <PullProperties pull={pull} files={files?.length} />
+          <PullProperties repo={repo} d={d} files={files?.length} />
         </div>
       </aside>
     </div>
+  )
+}
+
+const rail = <span className="ml-[22px] block h-2.5 w-px bg-stage-off" />
+const card =
+  "rounded-[7px] bg-card px-3 py-2.5 shadow-[0_0_0_1px_var(--border),0_1px_2px_#0000000a] hover:shadow-[0_0_0_1px_var(--stage-off),0_1px_3px_#00000014]"
+const selected = "shadow-[0_0_0_1.5px_var(--primary)]!"
+
+/** The number of a card on the rail, counted from the bottom. */
+function Position({ n, on }: { n: ReactNode; on: boolean }) {
+  return (
+    <span
+      className={cn(
+        "flex size-5 items-center justify-center rounded-[4px] font-mono text-[10px] font-semibold",
+        on
+          ? "bg-primary text-primary-foreground"
+          : "border text-muted-foreground"
+      )}
+    >
+      {n}
+    </span>
+  )
+}
+
+/** Where the rail ends: the branch below the lowest card. */
+function RailEnd({ branch, base }: { branch: string; base?: string }) {
+  return (
+    <div className="flex items-center gap-2.5 py-1 pl-4">
+      <span className="size-2.5 rounded-[2px] border-[1.5px] border-label" />
+      <span className="truncate font-mono text-xs text-body">{branch}</span>
+      {base && (
+        <span className="font-mono text-[11px] text-label">
+          {short(base).slice(0, 7)}
+        </span>
+      )}
+    </div>
+  )
+}
+
+/** The slot above the top card: opens a pull request on top of `branch`. */
+function AddLayer({ repo, branch }: { repo: string; branch: string }) {
+  return (
+    <li>
+      <Link
+        to="/$"
+        params={{ _splat: href(repo, "compare", `${branch}...`) }}
+        className="flex h-9 items-center gap-2.5 rounded-[7px] border border-dashed border-stage-off px-3 text-[13px] text-muted-foreground hover:border-label hover:text-ink"
+      >
+        <Plus className="size-3.5" />
+        Add layer
+      </Link>
+      {rail}
+    </li>
+  )
+}
+
+/**
+ * The pull requests of a stack from the top down, as cards on a rail that
+ * ends at the base branch; numbered from the bottom. The card of this pull
+ * request has the ring and holds `children`, its commits.
+ */
+function LayerStack({
+  repo,
+  layers,
+  current,
+  add,
+  children,
+}: {
+  repo: string
+  layers: PullLayer[]
+  current: number
+  add: boolean
+  children: ReactNode
+}) {
+  return (
+    <ol>
+      {add && <AddLayer repo={repo} branch={layers[0].source} />}
+      {layers.map((l, i) => {
+        const on = l.number === current
+        const head = (
+          <span className="grid grid-cols-[auto_minmax(0,1fr)] gap-x-2.5 gap-y-1.5">
+            <Position n={layers.length - i} on={on} />
+            <span className="truncate text-[13px] font-medium text-ink">
+              {l.title}
+            </span>
+            <span />
+            <span className="flex items-center gap-2 font-mono text-[11px] text-label">
+              #{l.number}
+              <span className="truncate" title={l.source}>
+                {l.source}
+              </span>
+            </span>
+          </span>
+        )
+        return (
+          <li key={l.number}>
+            {i > 0 && rail}
+            {on ? (
+              <div className={cn(card, selected)} aria-current="true">
+                {head}
+                {children}
+              </div>
+            ) : (
+              <Link
+                to="/$"
+                params={{ _splat: href(repo, "pull", String(l.number)) }}
+                className={cn(card, "block")}
+              >
+                {head}
+              </Link>
+            )}
+          </li>
+        )
+      })}
+      <li>
+        {rail}
+        <RailEnd branch={layers[layers.length - 1].target} />
+      </li>
+    </ol>
+  )
+}
+
+/** The commits of a layer from the head down, as rows inside its card. */
+function LayerCommits({
+  repo,
+  commits,
+  more,
+}: {
+  repo: string
+  commits: Commit[]
+  more: boolean
+}) {
+  if (commits.length === 0) return null
+  return (
+    <ol className="mt-2.5 border-t border-hairline pt-1.5">
+      {commits.map((c, i) => (
+        <li key={c.oid}>
+          <Link
+            to="/$"
+            params={{ _splat: href(repo, "commit", c.oid) }}
+            className="-mx-1.5 flex h-7 items-center gap-2.5 rounded-[5px] px-1.5 hover:bg-muted/50"
+            title={c.subject}
+          >
+            <span className="w-5 shrink-0 text-center font-mono text-[10px] font-semibold text-label">
+              {more ? "" : commits.length - i}
+            </span>
+            <span className="min-w-0 truncate text-[13px] text-body">
+              {c.subject}
+            </span>
+            <span className="ml-auto shrink-0 font-mono text-[11px] text-label">
+              {short(c.oid).slice(0, 7)}
+            </span>
+          </Link>
+        </li>
+      ))}
+    </ol>
   )
 }
 
@@ -201,16 +395,19 @@ function CommitStack({
   more,
   target,
   base,
+  add,
 }: {
   repo: string
   commits: Commit[]
   more: boolean
   target: string
   base: string
+  /** The source branch, to offer a pull request on top of it. */
+  add?: string
 }) {
-  const rail = <span className="ml-[22px] block h-2.5 w-px bg-stage-off" />
   return (
     <ol>
+      {add && <AddLayer repo={repo} branch={add} />}
       {commits.map((c, i) => (
         <li key={c.oid}>
           {i > 0 && rail}
@@ -218,20 +415,12 @@ function CommitStack({
             to="/$"
             params={{ _splat: href(repo, "commit", c.oid) }}
             className={cn(
-              "grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5 rounded-[7px] bg-card px-3 py-2.5 shadow-[0_0_0_1px_var(--border),0_1px_2px_#0000000a] hover:shadow-[0_0_0_1px_var(--stage-off),0_1px_3px_#00000014]",
-              i === 0 && "shadow-[0_0_0_1.5px_var(--primary)]!"
+              card,
+              "grid grid-cols-[auto_1fr] gap-x-2.5 gap-y-1.5",
+              i === 0 && selected
             )}
           >
-            <span
-              className={cn(
-                "flex size-5 items-center justify-center rounded-[4px] font-mono text-[10px] font-semibold",
-                i === 0
-                  ? "bg-primary text-primary-foreground"
-                  : "border text-muted-foreground"
-              )}
-            >
-              {more ? "" : commits.length - i}
-            </span>
+            <Position n={more ? "" : commits.length - i} on={i === 0} />
             <span className="truncate text-[13px] font-medium text-ink">
               {c.subject}
             </span>
@@ -250,13 +439,7 @@ function CommitStack({
       ))}
       <li>
         {commits.length > 0 && rail}
-        <div className="flex items-center gap-2.5 py-1 pl-4">
-          <span className="size-2.5 rounded-[2px] border-[1.5px] border-label" />
-          <span className="truncate font-mono text-xs text-body">{target}</span>
-          <span className="font-mono text-[11px] text-label">
-            {short(base).slice(0, 7)}
-          </span>
-        </div>
+        <RailEnd branch={target} base={base} />
       </li>
     </ol>
   )
@@ -343,7 +526,61 @@ function Stepper({ pull }: { pull: Pull }) {
   )
 }
 
-function PullProperties({ pull, files }: { pull: Pull; files?: number }) {
+/** The target branch of an open pull request, as a picker that moves it. */
+function TargetPicker({ repo, pull }: { repo: string; pull: Pull }) {
+  const refs = useRefs(repo)
+  const change = usePullChange(repo)
+  const branches = (refs.data?.branches ?? [])
+    .map((b) => b.name)
+    .filter((b) => b !== pull.source)
+  return (
+    <>
+      <Select
+        value={pull.target}
+        disabled={change.isPending}
+        onValueChange={(target) =>
+          change.mutate({ op: "pull_retarget", number: pull.number, target })
+        }
+      >
+        <SelectTrigger
+          size="sm"
+          aria-label="Target branch"
+          className="h-5.5! max-w-full min-w-0 gap-1.25 rounded-[5px] px-2 font-mono text-[11px] text-ink shadow-none [&_svg]:size-3! [&_svg]:text-muted-foreground"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {!branches.includes(pull.target) && (
+            <SelectItem value={pull.target} className="font-mono">
+              {pull.target}
+            </SelectItem>
+          )}
+          {branches.map((b) => (
+            <SelectItem key={b} value={b} className="font-mono">
+              {b}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+      {change.error && (
+        <p className="mt-1.5 text-xs text-destructive">
+          {change.error.message}
+        </p>
+      )}
+    </>
+  )
+}
+
+function PullProperties({
+  repo,
+  d,
+  files,
+}: {
+  repo: string
+  d: PullDetail
+  files?: number
+}) {
+  const { pull } = d
   // Who merged a pull request from GitHub is known only for merges seen
   // after the first import.
   const merger =
@@ -362,9 +599,15 @@ function PullProperties({ pull, files }: { pull: Pull; files?: number }) {
         {pull.source}
       </dd>
       <dt className="text-label">Into</dt>
-      <dd className="truncate font-mono text-xs text-ink" title={pull.target}>
-        {pull.target}
-      </dd>
+      {pull.state === "open" && d.can_close ? (
+        <dd className="min-w-0">
+          <TargetPicker repo={repo} pull={pull} />
+        </dd>
+      ) : (
+        <dd className="truncate font-mono text-xs text-ink" title={pull.target}>
+          {pull.target}
+        </dd>
+      )}
       {files !== undefined && (
         <>
           <dt className="text-label">Files</dt>
@@ -606,6 +849,22 @@ function TimelineEvent({
       )
     case "reopened":
       return line(<RotateCcw className="size-3.5" />, who("reopened"))
+    case "retargeted":
+      return line(
+        <ArrowRightLeft className="size-3.5" />,
+        <>
+          {e.author ? (
+            <>
+              <Who name={e.author} pull={pull} /> moved
+            </>
+          ) : (
+            "Moved"
+          )}{" "}
+          this from <span className="font-mono text-xs">{e.old_oid}</span> to{" "}
+          <span className="font-mono text-xs">{e.oid}</span>
+          {!e.author && " on GitHub"}
+        </>
+      )
     case "merged":
       return line(
         <GitMerge className="size-3.5 text-ink" />,
